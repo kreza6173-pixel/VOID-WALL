@@ -1,0 +1,8 @@
+id=void-wall
+name=VOID//WALL
+version=1.0
+versionCode=1
+author=privshell
+description=ADB-based firewall — full per-app blocking without root (Android Chain 3), background-data restriction (netpolicy), and real iptables/LAN rules for rooted devices (behind an explicit consent gate). Per-app data usage monitor, JSON import/export, panic button.
+webui=webui
+usesShellBridge=true
