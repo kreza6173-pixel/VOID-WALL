@@ -15,6 +15,11 @@ Block apps at the network level without root, using Android's built-in Chain 3 c
 - 🚨 **Panic button** — instant Airplane Mode toggle
 - 🛡️ **Self-protecting** — the host app and critical system/launcher/keyboard packages can never be blocked, even via import
 
+<img width="1080" height="2400" alt="Image" src="https://github.com/user-attachments/assets/a27b7d09-50c7-4801-b726-644404a1f53f" />
+<img width="1080" height="2400" alt="Image" src="https://github.com/user-attachments/assets/26c3421a-41bd-4398-b6bc-3628b7be23bc" />
+<img width="1080" height="2400" alt="Image" src="https://github.com/user-attachments/assets/9c960223-cbc7-4725-9294-997976f1d24f" />
+<img width="1080" height="2400" alt="Image" src="https://github.com/user-attachments/assets/8dc8c2cb-0a24-42d4-9c03-5a2819394f38" />
+
 ## Requirements
 
 - [Shevery](https://github.com/HmnDev-Tech/shevery) with Shizuku (ADB or root mode)
