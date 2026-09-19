@@ -244,6 +244,7 @@ function renderAppList(){
         </div>
         ${!crit ? `<label class="bg-toggle"><input type="checkbox" data-bg="${a.pkg}" data-uid="${a.uid}" ${a.bgRestricted?'checked':''}> also restrict background</label>` : ''}
       </div>
+      <button class="ask-ai" data-ask="${esc(a.pkg)}" title="Ask the AI assistant about this app">🤖</button>
       <label class="toggle-switch">
         <input type="checkbox" data-block="${a.pkg}" ${a.blocked?'checked':''} ${crit?'disabled':''}>
         <span class="toggle-slider"></span>
@@ -559,6 +560,7 @@ const RECIPE_CATS = [
   {id:'protect', label:'Protect'}, {id:'proxy', label:'Proxy'}, {id:'lan', label:'LAN'}, {id:'debug', label:'Debug'},
 ];
 let recipeCat = 'all';
+const RECIPE_PARAM_RE = /^[A-Za-z0-9_.:\/-]{1,64}$/;   // recipe inputs end up inside shell commands
 
 function initRecipeTabs(){
   const wrap = document.getElementById('recipeCatTabs');
@@ -598,7 +600,10 @@ function renderRecipes(){
       return vals;
     };
     card.querySelector('[data-act="preview"]').addEventListener('click', () => {
-      const cmdStr = recipe.cmd(getVals());
+      const vals = getVals();
+      const bad = Object.keys(vals).find(k => !RECIPE_PARAM_RE.test(vals[k]));
+      if (bad) { alert('Invalid value for "' + bad + '". Allowed: letters, digits and . : / _ - (max 64 characters).'); return; }
+      const cmdStr = recipe.cmd(vals);
       card.querySelector('[data-preview]').textContent = cmdStr;
       card.querySelector('[data-act="apply"]').disabled = false;
       card.querySelector('[data-act="apply"]').dataset.cmd = cmdStr;
