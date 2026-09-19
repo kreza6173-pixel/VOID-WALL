@@ -32,10 +32,6 @@ Block apps at the network level without root, using Android's built-in Chain 3 c
 2. In Shevery → ADB Modules → **Install ZIP**
 3. Set module access mode to **Full access** (or enable **WebUI shell bridge** in Custom mode)
 
-## Screenshots
-
-*(add screenshots here before publishing)*
-
 ## Safety model
 
 | Layer | Reversibility | Gate |
