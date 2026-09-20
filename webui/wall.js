@@ -1,4 +1,5 @@
 // ===================== helpers =====================
+const VW_BUILD = '1.2';   // must match <meta name="vw-build"> in index.html and BUILD in ai.js
 function shQuote(s){ return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 function runShell(cmd, timeoutSeconds){
   try {
@@ -20,6 +21,32 @@ function showDiag(id, text){
   if (!el) return;
   if (text) { el.style.display = 'block'; el.textContent = text; }
   else { el.style.display = 'none'; el.textContent = ''; }
+}
+
+// Themed drop-down used instead of a native <select> (native popups render out of style in WebViews).
+// `el` is a container <div>; el.value always reflects the current choice.
+function initPicker(el, options, initial, onChange){
+  let cur = options.some(o => o.value === initial) ? initial : (options[0] && options[0].value);
+  el.classList.add('picker');
+  el.innerHTML = '<button type="button" class="picker-btn"><span class="picker-label"></span><span class="picker-caret">▾</span></button>' +
+                 '<div class="model-menu"><div class="model-list"></div></div>';
+  const btn = el.querySelector('.picker-btn'), menu = el.querySelector('.model-menu'), list = el.querySelector('.model-list');
+  const paint = () => { const o = options.find(x => x.value === cur); el.querySelector('.picker-label').textContent = o ? o.label : ''; };
+  const close = () => { menu.style.display = 'none'; el.classList.remove('open'); };
+  btn.addEventListener('click', () => {
+    if (menu.style.display === 'block') { close(); return; }
+    list.innerHTML = options.map(o => `<div class="model-item${o.value === cur ? ' sel' : ''}" data-v="${esc(o.value)}">${esc(o.label)}</div>`).join('');
+    menu.style.display = 'block'; el.classList.add('open');
+  });
+  list.addEventListener('click', e => {
+    const it = e.target.closest && e.target.closest('[data-v]');
+    if (!it) return;
+    cur = it.dataset.v; paint(); close();
+    if (onChange) onChange(cur);
+  });
+  document.addEventListener('click', e => { if (menu.style.display === 'block' && !el.contains(e.target)) close(); });
+  Object.defineProperty(el, 'value', { get: () => cur, set: v => { cur = v; paint(); } });
+  paint();
 }
 
 let SHEVERY_PKG = 'com.hamondev.shevery';
@@ -280,43 +307,151 @@ function renderAppList(){
 }
 
 // ===================== USAGE =====================
+// `dumpsys netstats detail` prints the UID on one line and its time buckets (st= rb= tb= ...) on the
+// following lines, and its output is far larger than the bridge's per-call output limit. The
+// aggregation therefore happens on the device (plain POSIX sh, no awk needed) and only one short
+// line per app comes back:  "<uid> <mobile bytes> <wifi bytes> <other bytes>".
+const USAGE_SH = [
+  "if [ $((4294967296+1)) = 4294967297 ]; then S=1; else S=1000; fi",
+  "L=; ok=0; ty=o; cu=; cm=0; cw=0; co=0",
+  "flush() { [ -n \"$cu\" ] || return 0; eval \"M$cu=\\$((\\${M$cu:-0}+cm)); W$cu=\\$((\\${W$cu:-0}+cw)); O$cu=\\$((\\${O$cu:-0}+co))\"; case \" $L \" in *\" $cu \"*) ;; *) L=\"$L $cu\";; esac; cu=; cm=0; cw=0; co=0; }",
+  "dumpsys netstats detail 2>/dev/null | grep -E '^ *(ident=|st=)' | {",
+  "while IFS= read -r l; do",
+  "  case \"$l\" in",
+  "    *ident=*)",
+  "      flush; ok=0",
+  "      case \"$l\" in *\" uid=\"*\" tag=\"*)",
+  "        u=${l#* uid=}; u=${u%% *}; t=${l#* tag=}; t=${t%% *}",
+  "        case \"$u\" in ''|*[!0-9]*) ;; *) [ \"$t\" = 0x0 ] && ok=1;; esac;;",
+  "      esac",
+  "      if [ $ok = 1 ]; then",
+  "        cu=$u",
+  "        case \"$l\" in *type=MOBILE*) ty=m;; *type=WIFI*) ty=w;; *) ty=o;; esac",
+  "      fi;;",
+  "    *)",
+  "      [ $ok = 1 ] || continue",
+  "      s=${l#*st=}; s=${s%% *}",
+  "      [ ${#s} -gt 11 ] && s=${s%???}",
+  "      [ \"$s\" -ge @CUT@ ] 2>/dev/null || continue",
+  "      r=${l#*rb=}; r=${r%% *}; x=${l#*tb=}; x=${x%% *}",
+  "      if [ $S = 1 ]; then b=$((r+x)); else r=${r%???}; x=${x%???}; b=$((${r:-0}+${x:-0})); fi",
+  "      case $ty in m) cm=$((cm+b));; w) cw=$((cw+b));; *) co=$((co+b));; esac;;",
+  "  esac",
+  "done",
+  "flush",
+  "echo \"S $S\"",
+  "for u in $L; do eval \"echo \\\"$u \\${M$u} \\${W$u} \\${O$u}\\\"\"; done",
+  "}"
+].join('\n');
+
+function uidPackageMap(){
+  const map = {};
+  (runShell('pm list packages -U 2>/dev/null', 20).stdout || '').split('\n').forEach(line => {
+    const m = line.match(/^package:(\S+)\s+uid:(\d+)/);
+    if (m) map[m[2]] = m[1];
+  });
+  return map;
+}
+
+// One pass over `dumpsys netstats detail`, keeping only buckets that start at or after `cut` (epoch seconds).
+function netstatsRows(cut){
+  const res = runShell(USAGE_SH.replace('@CUT@', String(cut)), 90);
+  const lines = (res.stdout || '').split('\n').map(s => s.trim()).filter(Boolean);
+  if (!lines.length || lines[0][0] !== 'S') {
+    return { error: 'exit: ' + res.exitCode + (res.timedOut ? ' (timed out)' : '') + '\nstderr: ' + (res.stderr || '(empty)'), rows: [] };
+  }
+  const scale = parseInt(lines[0].split(' ')[1]) || 1;
+  const names = uidPackageMap();
+  const rows = lines.slice(1).map(l => {
+    const [uid, m, w, o] = l.split(' ');
+    const mobile = (parseInt(m) || 0) * scale, wifi = (parseInt(w) || 0) * scale, other = (parseInt(o) || 0) * scale;
+    return { uid, pkg: names[uid] || ('uid:' + uid), mobile, wifi, other, bytes: mobile + wifi + other };
+  }).filter(r => r.bytes > 0).sort((a, b) => b.bytes - a.bytes);
+  return { rows };
+}
+
+// Battery-stats totals (since the last full charge) — a second source for devices whose netstats dump has no per-app data.
+function batteryRows(){
+  const res = runShell("dumpsys batterystats --checkin 2>/dev/null | grep -E '^[0-9]+,[0-9]+,l,nt,'", 60);
+  const names = uidPackageMap();
+  const rows = (res.stdout || '').split('\n').map(l => l.trim().split(',')).filter(f => f.length > 7).map(f => {
+    const n = i => parseInt(f[i]) || 0;
+    const mobile = n(4) + n(5), wifi = n(6) + n(7);
+    return { uid: f[1], pkg: names[f[1]] || ('uid:' + f[1]), mobile, wifi, other: 0, bytes: mobile + wifi };
+  }).filter(r => r.bytes > 0).sort((a, b) => b.bytes - a.bytes);
+  return { rows };
+}
+
+// Structure summary shown when nothing can be read, so the cause is visible instead of a blank screen.
+function netstatsProbe(){
+  const d = 'dumpsys netstats detail 2>&1';
+  const cmd = [
+    `echo "ident lines: $(${d} | grep -c ident=)"`,
+    `echo "uid idents: $(${d} | grep -cE 'ident=.* uid=[0-9]+ ')"`,
+    `echo "uid idents tag0: $(${d} | grep -cE 'uid=[0-9]+ set=[A-Z]+ tag=0x0')"`,
+    `echo "bucket lines: $(${d} | grep -cE '^ *st=')"`,
+    `echo "sections:"; ${d} | grep -E '^[A-Za-z][A-Za-z ]*:' | head -12`,
+    `echo "sample ident:"; ${d} | grep -E -m2 'uid=[0-9]+ ' | cut -c1-200`,
+    `echo "sample bucket:"; ${d} | grep -E -m2 'st=[0-9]' | cut -c1-160`,
+  ].join('; ');
+  return (runShell(cmd, 90).stdout || '').trim() || '(no output)';
+}
+
+// mode: 'boot' | 'day' | 'all' (netstats history) | 'charge' (battery stats)
+function collectUsage(mode){
+  if (mode === 'charge') {
+    const b = batteryRows();
+    return b.rows.length ? { rows: b.rows, source: 'battery' } : { rows: [], source: 'battery', probe: 'dumpsys batterystats returned no per-app network lines.' };
+  }
+  const up = parseFloat(((runShell('cat /proc/uptime', 5).stdout || '').trim().split(/\s+/)[0])) || 0;
+  const now = Math.floor(Date.now() / 1000);
+  // History buckets are 1-2 h long: include the bucket that overlaps the boot moment.
+  const cut = mode === 'all' ? 0 : mode === 'day' ? now - 86400 : Math.max(0, now - Math.floor(up) - 7200);
+  const first = netstatsRows(cut);
+  if (first.rows.length) return { rows: first.rows, source: 'netstats' };
+
+  const all = cut === 0 ? first : netstatsRows(0);
+  if (all.rows.length) {
+    return { rows: [], source: 'netstats',
+             note: 'Android has history for ' + all.rows.length + ' apps, but none inside this range yet. Try "Last 24 hours" or "All recorded history".' };
+  }
+  const b = batteryRows();
+  if (b.rows.length) {
+    return { rows: b.rows, source: 'battery',
+             note: 'dumpsys netstats has no per-app data on this device, so these are battery-stats totals since the last full charge.' };
+  }
+  return { rows: [], source: 'none', error: all.error || '', probe: netstatsProbe() };
+}
+
+function usageSplit(x){
+  const parts = [];
+  if (x.mobile) parts.push('📶 ' + fmtBytes(x.mobile));
+  if (x.wifi) parts.push('📡 ' + fmtBytes(x.wifi));
+  if (x.other) parts.push('🔒 ' + fmtBytes(x.other));
+  return parts.join(' · ');
+}
+
+initPicker(document.getElementById('usageRange'), [
+  { value: 'boot',   label: 'Since last boot' },
+  { value: 'day',    label: 'Last 24 hours' },
+  { value: 'all',    label: 'All recorded history' },
+  { value: 'charge', label: 'Since last full charge (battery stats)' },
+], 'boot');
+
 document.getElementById('btnScanUsage').addEventListener('click', async function(){
   await withBusy(this, async () => {
     showDiag('usageDiag', null);
-    const res = runShell('dumpsys netstats detail 2>&1 | grep -oE "uid=[0-9]+.*rb=[0-9]+.*rp=[0-9]+.*tb=[0-9]+.*tp=[0-9]+"', 30);
-    if (!res.ok) {
-      showDiag('usageDiag', 'dumpsys netstats failed.\nstderr: ' + (res.stderr||'(empty)'));
-      document.getElementById('usageResult').innerHTML = '';
+    const note = document.getElementById('usageNote'), box = document.getElementById('usageResult');
+    note.textContent = ''; box.innerHTML = '';
+    const r = collectUsage(document.getElementById('usageRange').value);
+    if (r.note) note.textContent = r.note;
+    if (!r.rows.length) {
+      box.innerHTML = '<div class="empty-note"><span class="big">No usage data</span>Nothing to show for this range.</div>';
+      if (r.probe || r.error) showDiag('usageDiag', 'Diagnostics (share this if usage stays empty):\n' + (r.error ? r.error + '\n' : '') + (r.probe || ''));
       return;
     }
-    const totals = {};
-    (res.stdout||'').split('\n').forEach(line => {
-      const uid = (line.match(/uid=(\d+)/)||[])[1];
-      const rb = parseInt((line.match(/rb=(\d+)/)||[])[1] || 0);
-      const tb = parseInt((line.match(/tb=(\d+)/)||[])[1] || 0);
-      if (!uid) return;
-      totals[uid] = (totals[uid]||0) + rb + tb;
-    });
-    const pkgRes = runShell('pm list packages -U 2>/dev/null', 20);
-    const uidToPkg = {};
-    (pkgRes.stdout||'').split('\n').forEach(line => {
-      const m = line.match(/^package:(\S+)\s+uid:(\d+)/);
-      if (m) uidToPkg[m[2]] = m[1];
-    });
-
-    const rows = Object.entries(totals)
-      .map(([uid, bytes]) => ({ uid, pkg: uidToPkg[uid] || ('uid:'+uid), bytes }))
-      .filter(r => r.bytes > 0)
-      .sort((a,b) => b.bytes - a.bytes)
-      .slice(0, 40);
-
-    const box = document.getElementById('usageResult');
-    if (!rows.length) {
-      box.innerHTML = '<div class="empty-note"><span class="big">No usage data</span>Nothing recorded since last boot yet.</div>';
-      return;
-    }
-    box.innerHTML = rows.map(r =>
-      `<div class="result-row"><span>${esc(r.pkg)}</span><b>${fmtBytes(r.bytes)}</b></div>`
+    box.innerHTML = r.rows.slice(0, 40).map(x =>
+      `<div class="result-row"><span>${esc(x.pkg)}<small>${usageSplit(x)}</small></span><b>${fmtBytes(x.bytes)}</b></div>`
     ).join('');
   });
 });

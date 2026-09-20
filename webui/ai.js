@@ -12,6 +12,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
+const BUILD = '1.2';
 
 // ---------------------------------------------------------------- providers
 // `kind` decides the wire format. Model ids are only defaults — the field is editable
@@ -30,7 +31,7 @@ const CTX_DEFS = [
   { k: 'status',  def: true,  label: 'Device & module status',  hint: 'Android SDK, Chain 3, root state' },
   { k: 'blocked', def: true,  label: 'My blocked / restricted apps', hint: 'package names you already blocked' },
   { k: 'apps',    def: false, label: 'Installed user apps',     hint: 'package names of all 3rd-party apps' },
-  { k: 'usage',   def: false, label: 'Data usage (top 15)',     hint: 'per-app bytes since last boot' },
+  { k: 'usage',   def: false, label: 'Data usage (top 15)',     hint: 'per-app mobile / Wi-Fi bytes for the range chosen in Data Usage' },
   { k: 'rules',   def: false, label: 'Active root rules',       hint: 'contents of the VOIDWALL iptables chains' },
   { k: 'error',   def: true,  label: 'Last error / diagnostic', hint: 'output of the last failed scan' },
 ];
@@ -87,9 +88,8 @@ function refreshBadge() {
 }
 
 function initSettings() {
-  const sel = $('aiProvider');
-  sel.innerHTML = Object.entries(PROVIDERS).map(([id, p]) => `<option value="${id}">${esc(p.label)}</option>`).join('');
-  sel.value = cfg.provider;
+  initPicker($('aiProvider'), Object.entries(PROVIDERS).map(([id, p]) => ({ value: id, label: p.label })), cfg.provider,
+             v => { cfg.provider = v; saveCfg(); paint(); });
   $('aiRemember').checked = cfg.remember;
 
   const paint = () => {
@@ -98,13 +98,12 @@ function initSettings() {
     $('aiBaseWrap').style.display = cfg.provider === 'custom' ? 'block' : 'none';
     $('aiKey').value = getKey();
     $('aiKey').placeholder = cfg.provider === 'custom' ? 'optional for local servers' : 'paste your API key';
-    $('aiModelList').innerHTML = '';
+    loadModelCache(); closeModelMenu();
     setHint('');
     refreshBadge();
   };
   paint();
 
-  sel.addEventListener('change', () => { cfg.provider = sel.value; saveCfg(); paint(); });
   $('aiModel').addEventListener('change', () => { cfg.models[cfg.provider] = $('aiModel').value.trim(); saveCfg(); refreshBadge(); });
   $('aiBase').addEventListener('change', () => { cfg.bases[cfg.provider] = $('aiBase').value.trim(); saveCfg(); refreshBadge(); });
   $('aiKey').addEventListener('input', () => { setKey($('aiKey').value); refreshBadge(); });
@@ -122,6 +121,19 @@ function initSettings() {
   $('btnAiModels').addEventListener('click', async function () {
     setKey($('aiKey').value);
     await withBusy(this, fetchModels);
+  });
+  $('btnAiPick').addEventListener('click', () => toggleModelMenu());
+  $('aiModelFilter').addEventListener('input', renderModelMenu);
+  $('aiModelListBox').addEventListener('click', e => {
+    const it = e.target.closest && e.target.closest('[data-m]');
+    if (!it) return;
+    cfg.models[cfg.provider] = it.dataset.m; saveCfg();
+    $('aiModel').value = it.dataset.m;
+    closeModelMenu(); refreshBadge();
+  });
+  document.addEventListener('click', e => {
+    const m = $('aiModelMenu');
+    if (m.style.display === 'block' && !m.contains(e.target) && e.target !== $('btnAiPick')) closeModelMenu();
   });
 
   // context toggles
@@ -147,6 +159,36 @@ function initSettings() {
     w.innerHTML = '<b>⚠ Internet is off for this module.</b> ' + esc(TRUST_HELP);
   } else if (getKey() || cfg.provider === 'custom') $('aiSettings').open = false;
 }
+
+// ---------------------------------------------------------------- model picker
+// A native <datalist> misbehaves in Android WebViews (truncated list, ghost text, frozen popup),
+// so the picker is a plain in-page list with a filter box.
+let modelIds = [];
+const modelsKey = () => 'vw_ai_models_' + cfg.provider;
+function loadModelCache() {
+  try { modelIds = JSON.parse(lsGet(modelsKey()) || '[]'); } catch (e) { modelIds = []; }
+  if (!Array.isArray(modelIds)) modelIds = [];
+}
+function renderModelMenu() {
+  const q = ($('aiModelFilter').value || '').trim().toLowerCase();
+  const cur = getModel();
+  const items = modelIds.filter(id => !q || id.toLowerCase().includes(q));
+  $('aiModelFilter').style.display = modelIds.length > 10 ? 'block' : 'none';
+  $('aiModelListBox').innerHTML = items.length
+    ? items.map(id => `<div class="model-item${id === cur ? ' sel' : ''}" data-m="${esc(id)}">${esc(id)}</div>`).join('')
+    : `<div class="model-empty">${modelIds.length ? 'No match' : 'No models loaded yet — tap Fetch.'}</div>`;
+}
+function closeModelMenu() { const m = $('aiModelMenu'); if (m) m.style.display = 'none'; }
+function toggleModelMenu() {
+  const m = $('aiModelMenu');
+  if (m.style.display === 'block') { closeModelMenu(); return; }
+  $('aiModelFilter').value = '';
+  renderModelMenu();
+  m.style.display = 'block';
+  const sel = m.querySelector('.model-item.sel');
+  if (sel) $('aiModelListBox').scrollTop = Math.max(0, sel.offsetTop - 60);
+}
+
 function setHint(t) { const h = $('aiCfgHint'); if (h) h.textContent = t || ''; }
 
 // ---------------------------------------------------------------- network layer
@@ -172,10 +214,42 @@ function netHint(e) {
   }
   return m;
 }
+function errorHint(status, msg) {
+  const m = String(msg).toLowerCase();
+  if (status === 402 || /insufficient (balance|funds)|no credits|billing|exceeded your current quota|out of credit/.test(m))
+    return 'The provider says this account has no credit or quota left. Add credit or a payment method on its billing page, or switch provider.';
+  if (status === 401 || status === 403) return 'The key was rejected or has no access to this model. Check the key and the selected model.';
+  if (status === 404) return 'Model not found for this key. Tap ▾ and pick one from the fetched list.';
+  if (status === 429) return 'Rate limit reached. Wait a minute and try again.';
+  if (status === 502 || status === 503 || status === 529 || /overloaded|high demand/.test(m))
+    return 'The provider is overloaded right now. Try again shortly or pick a different model.';
+  return '';
+}
 async function readError(res) {
   const t = await res.text();
-  try { const j = JSON.parse(t); const m = (j.error && (j.error.message || j.error)) || j.message || t; return `HTTP ${res.status}: ${typeof m === 'string' ? m : JSON.stringify(m)}`; }
-  catch (e) { return `HTTP ${res.status}: ${t.slice(0, 300)}`; }
+  let m = t.slice(0, 300);
+  try { const j = JSON.parse(t); const x = (j.error && (j.error.message || j.error)) || j.message || t; m = typeof x === 'string' ? x : JSON.stringify(x); } catch (e) {}
+  const hint = errorHint(res.status, m);
+  return `HTTP ${res.status}: ${m}` + (hint ? `\n→ ${hint}` : '');
+}
+// Chat requests retry a few times when the provider reports a temporary overload.
+let onRetry = null;
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    if (signal) signal.addEventListener('abort', () => { clearTimeout(t); const e = new Error('Aborted'); e.name = 'AbortError'; reject(e); }, { once: true });
+  });
+}
+async function fetchRetry(url, opt) {
+  for (let i = 0; ; i++) {
+    const res = await fetch(url, opt);
+    if ((res.status === 502 || res.status === 503 || res.status === 529) && i < 2) {
+      if (onRetry) onRetry(i + 1);
+      await sleep(2000 * (i + 1), opt.signal);
+      continue;
+    }
+    return res;
+  }
 }
 function authHeaders() {
   const p = PROVIDERS[cfg.provider], key = getKey();
@@ -209,8 +283,9 @@ async function fetchModels() {
       if (p.kind === 'openai') ids = ids.filter(id => !/embed|whisper|tts|dall-e|moderation|image|audio|realtime|transcribe|davinci|babbage/i.test(id));
     }
     ids = ids.filter(Boolean).sort();
-    $('aiModelList').innerHTML = ids.map(id => `<option value="${esc(id)}"></option>`).join('');
-    setHint(ids.length ? `${ids.length} models available — key works ✓. Tap the Model field to pick one.` : 'Connected, but the provider returned no models.');
+    modelIds = ids; lsSet(modelsKey(), JSON.stringify(ids.slice(0, 500)));
+    if ($('aiModelMenu').style.display === 'block') renderModelMenu();
+    setHint(ids.length ? `${ids.length} models available — key works ✓. Tap ▾ to choose one.` : 'Connected, but the provider returned no models.');
   } catch (e) { setHint('✗ ' + netHint(e)); }
 }
 
@@ -221,7 +296,7 @@ async function callModel(system, msgs, signal) {
   if (!model) throw new Error('No model set — type a model id or tap Fetch.');
 
   if (p.kind === 'openai') {
-    const res = await fetch(base + '/chat/completions', {
+    const res = await fetchRetry(base + '/chat/completions', {
       method: 'POST', signal, headers: authHeaders(),
       body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...msgs] }),
     });
@@ -230,7 +305,7 @@ async function callModel(system, msgs, signal) {
     return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
   }
   if (p.kind === 'anthropic') {
-    const res = await fetch(base + '/messages', {
+    const res = await fetchRetry(base + '/messages', {
       method: 'POST', signal, headers: authHeaders(),
       body: JSON.stringify({ model, max_tokens: 4096, system, messages: msgs }),
     });
@@ -239,7 +314,7 @@ async function callModel(system, msgs, signal) {
     return (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
   }
   // gemini
-  const res = await fetch(`${base}/models/${encodeURIComponent(model)}:generateContent`, {
+  const res = await fetchRetry(`${base}/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST', signal, headers: authHeaders(),
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
@@ -288,17 +363,14 @@ function collectContext(extra) {
     out.push(`## Installed user apps (${list.length}${list.length > 300 ? ', first 300 shown' : ''})\n${list.slice(0, 300).join(', ') || '(none found)'}`);
   }
   if (on('usage')) {
-    const res = runShell('dumpsys netstats detail 2>&1 | grep -oE "uid=[0-9]+.*rb=[0-9]+.*rp=[0-9]+.*tb=[0-9]+.*tp=[0-9]+"', 30);
-    const totals = {};
-    (res.stdout || '').split('\n').forEach(line => {
-      const uid = (line.match(/uid=(\d+)/) || [])[1];
-      const rb = parseInt((line.match(/rb=(\d+)/) || [])[1] || 0), tb = parseInt((line.match(/tb=(\d+)/) || [])[1] || 0);
-      if (uid) totals[uid] = (totals[uid] || 0) + rb + tb;
-    });
-    const map = uidMap();
-    const rows = Object.entries(totals).filter(e => e[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 15)
-      .map(([uid, b]) => `${map[uid] || 'uid:' + uid}: ${fmtBytes(b)}`);
-    out.push(`## Data usage since last boot (top 15)\n${rows.join('\n') || '(no data)'}`);
+    const v = $('usageRange') ? $('usageRange').value : '';
+    const sel = ['boot', 'day', 'all', 'charge'].includes(v) ? v : 'boot';
+    const label = { boot: 'since last boot', day: 'last 24 hours', all: 'all recorded history', charge: 'since last full charge' }[sel] || sel;
+    const u = collectUsage(sel);
+    const rows = u.rows.slice(0, 15).map(r => `${r.pkg}: ${fmtBytes(r.bytes)} (mobile ${fmtBytes(r.mobile)}, wifi ${fmtBytes(r.wifi)}, vpn/other ${fmtBytes(r.other || 0)})`);
+    const shown = u.source === 'battery' ? 'since last full charge (battery stats)' : label;
+    out.push(`## Data usage, ${shown} (top 15)\n${rows.join('\n') || '(no data available)'}`);
+    if (!rows.length && u.probe && !lastDiag) lastDiag = 'Data usage diagnostics:\n' + u.probe;
   }
   if (on('rules')) {
     if (isRoot) {
@@ -586,6 +658,7 @@ async function send(text, extraCtx) {
   const bubble = addBubble('ai', 'thinking…', { pending: true });
   setBusy(true);
   abortCtl = new AbortController();
+  onRetry = n => { bubble.textContent = `provider busy — retrying (${n}/2)…`; };
   try {
     const system = buildSystemPrompt(collectContext(extraCtx));
     let msgs = history.slice(-16);
@@ -598,7 +671,7 @@ async function send(text, extraCtx) {
     bubble.classList.remove('pending'); bubble.classList.add('err');
     bubble.textContent = '✗ ' + netHint(e);
     if (!$('aiInput').value) $('aiInput').value = text;
-  } finally { setBusy(false); abortCtl = null; }
+  } finally { setBusy(false); abortCtl = null; onRetry = null; }
 }
 
 const CHIPS = [
@@ -642,9 +715,15 @@ function initChat() {
 // ---------------------------------------------------------------- init
 (function init() {
   if (!$('tab-ai')) return;
-  loadCfg();
-  initSettings();
-  initChat();
+  const warn = msg => { const w = $('aiBuildWarn'); if (w) { w.style.display = 'block'; w.textContent = msg; } };
+  // index.html, wall.js and ai.js ship together; a half-updated install leaves dead buttons.
+  const meta = document.querySelector('meta[name="vw-build"]');
+  const seen = { 'index.html': meta && meta.content, 'wall.js': typeof VW_BUILD !== 'undefined' ? VW_BUILD : undefined, 'ai.js': BUILD };
+  const off = Object.keys(seen).filter(k => seen[k] !== BUILD);
+  if (off.length) warn('⚠ Files out of sync (' + Object.entries(seen).map(([k, v]) => k + ' ' + (v || 'old')).join(', ') +
+                       '). Reinstall the full module ZIP so every file is updated, then fully close and reopen the module.');
+  try { loadCfg(); initSettings(); } catch (e) { warn('AI settings failed to start: ' + (e && e.message || e)); console.error(e); }
+  try { initChat(); } catch (e) { warn('AI chat failed to start: ' + (e && e.message || e)); console.error(e); }
   // remember the last scan/usage diagnostic so "Explain last error" has something to work with
   if (typeof showDiag === 'function') {
     const orig = showDiag;

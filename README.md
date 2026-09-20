@@ -10,11 +10,20 @@ Block apps at the network level without root, using Android's built-in Chain 3 c
 
 <table>
   <tr>
-    <td width="20%"><img src="https://github.com/user-attachments/assets/a27b7d09-50c7-4801-b726-644404a1f53f" alt="VOID//WALL screenshot 1" width="100%"></td>
-    <td width="20%"><img src="https://github.com/user-attachments/assets/26c3421a-41bd-4398-b6bc-3628b7be23bc" alt="VOID//WALL screenshot 2" width="100%"></td>
-    <td width="20%"><img src="https://github.com/user-attachments/assets/9c960223-cbc7-4725-9294-997976f1d24f" alt="VOID//WALL screenshot 3" width="100%"></td>
-    <td width="20%"><img src="https://github.com/user-attachments/assets/8dc8c2cb-0a24-42d4-9c03-5a2819394f38" alt="VOID//WALL screenshot 4" width="100%"></td>
-    <td width="20%"><img src="docs/screenshots/ai-assistant.jpg" alt="VOID//WALL AI assistant" width="100%"></td>
+    <td width="25%"><img src="https://github.com/user-attachments/assets/a27b7d09-50c7-4801-b726-644404a1f53f" alt="VOID//WALL screenshot 1" width="100%"></td>
+    <td width="25%"><img src="https://github.com/user-attachments/assets/26c3421a-41bd-4398-b6bc-3628b7be23bc" alt="VOID//WALL screenshot 2" width="100%"></td>
+    <td width="25%"><img src="https://github.com/user-attachments/assets/9c960223-cbc7-4725-9294-997976f1d24f" alt="VOID//WALL screenshot 3" width="100%"></td>
+    <td width="25%"><img src="https://github.com/user-attachments/assets/8dc8c2cb-0a24-42d4-9c03-5a2819394f38" alt="VOID//WALL screenshot 4" width="100%"></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="20%"><img src="docs/screenshots/ai-provider.jpg" alt="AI assistant: provider and key" width="100%"></td>
+    <td width="20%"><img src="docs/screenshots/ai-audit.jpg" alt="AI assistant: setup audit" width="100%"></td>
+    <td width="20%"><img src="docs/screenshots/ai-actions.jpg" alt="AI assistant: proposed actions" width="100%"></td>
+    <td width="20%"><img src="docs/screenshots/usage-tab.jpg" alt="Data usage tab" width="100%"></td>
+    <td width="20%"><img src="docs/screenshots/ai-usage-answer.jpg" alt="AI assistant: data usage advice" width="100%"></td>
   </tr>
 </table>
 
@@ -22,7 +31,7 @@ Block apps at the network level without root, using Android's built-in Chain 3 c
 
 - 🧱 **Full per-app blocking without root** — via Android's native Chain 3 API (`cmd connectivity`), Android 11+
 - 📉 **Background data restriction** — independent, fine-grained control via `netpolicy`
-- 📊 **Per-app data usage monitor** — parsed from `dumpsys netstats`
+- 📊 **Per-app data usage monitor** — mobile vs Wi-Fi, parsed from `dumpsys netstats` on the device
 - 🔓 **Root mode** — real iptables rules, LAN device blocking, port forwarding and a raw scripting console, all inside dedicated removable chains
 - 📚 **14 ready-made recipes** — VPN kill switch, DNS forcing, SYN-flood protection, bandwidth throttling, device isolation and more
 - 🤖 **Optional AI assistant** — bring your own API key (OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Mistral, xAI, or any OpenAI-compatible / local endpoint); explains your setup and proposes actions you approve one by one
@@ -49,7 +58,7 @@ Block apps at the network level without root, using Android's built-in Chain 3 c
 |---|---|
 | **Dashboard** | Chain 3 toggle, status summary, panic button |
 | **App Rules** | Scan installed apps, block them fully, or restrict background data only |
-| **Data Usage** | Per-app traffic since the last boot |
+| **Data Usage** | Per-app traffic since boot, last 24 h, all recorded history or since the last full charge, split into mobile, Wi-Fi and VPN-tunnel traffic |
 | **Root Advanced** | LAN blocking, port forwarding, raw script console (root, behind a consent gate) |
 | **Recipes** | Parameterised, previewable iptables recipes (root) |
 | **AI Assistant** | Chat with your provider of choice about your setup (optional) |
@@ -92,6 +101,7 @@ webui/index.html   Interface and styles
 webui/wall.js      Firewall logic (Chain 3, netpolicy, iptables, recipes, import/export)
 webui/ai.js        Optional AI assistant
 docs/screenshots/  Images used in this README
+CHANGELOG.md       Release history
 ```
 
 ## Contributing

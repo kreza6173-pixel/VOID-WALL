@@ -2,6 +2,7 @@
 <html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
+<meta name="vw-build" content="1.2">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>VOID//WALL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -123,6 +124,7 @@ button.loading::after{content:'';width:12px;height:12px;border:2px solid rgba(0,
 
 .result-row{display:flex;justify-content:space-between;padding:6px 0;font-family:var(--mono);font-size:11px;color:var(--text-dim);}
 .result-row b{color:var(--text);}
+.result-row small{display:block;font-size:10.5px;opacity:.75;}
 
 .log-box{margin-top:10px;background:#020207;border:1px solid var(--border);border-radius:9px;padding:11px;max-height:200px;overflow-y:auto;
   font-family:var(--mono);font-size:10.5px;color:#8bffe0;white-space:pre-wrap;word-break:break-all;}
@@ -183,6 +185,21 @@ details.card > .inner{margin-top:8px;}
 .ai-msg.pending{color:var(--text-dim);animation:pulse 1.4s infinite;}
 .ai-msg code{font-family:var(--mono);font-size:12px;background:rgba(0,229,255,.08);padding:1px 5px;border-radius:4px;color:var(--cyan);}
 .ai-code{font-family:var(--mono);font-size:11px;background:#020207;border:1px solid var(--border);border-radius:8px;padding:9px;overflow-x:auto;white-space:pre;color:#8bffe0;margin:8px 0;direction:ltr;text-align:left;}
+.picker{position:relative;}
+.picker .picker-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:var(--mono);font-size:13.5px;font-weight:400;text-align:left;box-shadow:none;}
+.picker .picker-btn:active{transform:none;}
+.picker.open .picker-btn,.picker .picker-btn:focus{outline:none;border-color:var(--border-strong);}
+.picker .picker-caret{color:var(--cyan);font-size:12px;flex:none;transition:transform .15s;}
+.picker.open .picker-caret{transform:rotate(180deg);}
+.picker .model-list{max-height:340px;min-height:48px;}   /* fixed px: vh-based sizes collapse to 0 in some WebViews */
+.model-menu{display:none;margin-top:8px;border:1px solid var(--border-strong);border-radius:10px;background:#0a0c14;overflow:hidden;}
+.model-menu input{border:none;border-bottom:1px solid var(--border);border-radius:0;background:rgba(255,255,255,.03);}
+.model-list{max-height:260px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;}
+.model-item{padding:11px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12.5px;color:var(--text);word-break:break-all;cursor:pointer;}
+.model-item:last-child{border-bottom:none;}
+.model-item.sel{color:var(--cyan);background:rgba(0,229,255,.07);}
+.model-empty{padding:14px 12px;color:var(--text-dim);font-size:13px;}
+.ai-msg.err{white-space:pre-wrap;}
 .ai-actions{margin-top:10px;display:grid;gap:8px;}
 .ai-action{border:1px solid var(--border-strong);border-radius:10px;padding:11px;background:rgba(0,0,0,.25);}
 .ai-action.rejected{border-color:var(--red);background:rgba(255,77,109,.05);}
@@ -211,6 +228,7 @@ details.card > .inner{margin-top:8px;}
   </div>
 </header>
 
+<div id="jsErrorBar" class="warn-box" style="display:none;margin:12px 14px;border-color:var(--red);background:rgba(255,77,109,.06);"></div>
 <div id="bridgeWarning"><b>⚠ Shell access is disabled.</b> Enable Full access or WebUI shell bridge in the module settings.</div>
 <div id="chain3Warning"><b>⚠ Chain 3 is unavailable</b> (requires Android 11+). Only background restriction (netpolicy) works — not full blocking.</div>
 
@@ -273,9 +291,12 @@ details.card > .inner{margin-top:8px;}
 <!-- ================= USAGE ================= -->
 <div class="tabpanel" id="tab-usage">
   <div class="card">
-    <div class="card-head"><span class="icon">📊</span><h3>Data Usage Since Last Boot</h3></div>
-    <p class="desc">From <code>dumpsys netstats</code> — cumulative since the device last rebooted, not a custom time range.</p>
-    <div class="row"><button class="btn-primary" id="btnScanUsage">📊 Show Usage</button></div>
+    <div class="card-head"><span class="icon">📊</span><h3>Data Usage</h3></div>
+    <p class="desc">From <code>dumpsys netstats</code> — Android's recorded per-app traffic, split into mobile and Wi-Fi. Time buckets are coarse (1–2 h), so ranges are approximate.</p>
+    <div class="hint" style="margin:0 0 10px;">With a VPN active, Android may file app traffic under the VPN tunnel (🔒), so the mobile / Wi-Fi split can be empty for those apps.</div>
+    <div id="usageRange"></div>
+    <div class="row" style="margin-top:10px;"><button class="btn-primary" id="btnScanUsage">📊 Show Usage</button></div>
+    <div class="hint" id="usageNote"></div>
     <div class="diag-box" id="usageDiag"></div>
     <div id="usageResult"></div>
   </div>
@@ -354,23 +375,28 @@ details.card > .inner{margin-top:8px;}
 
 <!-- ================= AI ASSISTANT ================= -->
 <div class="tabpanel" id="tab-ai">
+  <div class="warn-box" id="aiBuildWarn" style="display:none;border-color:var(--red);"></div>
   <div class="warn-box" id="aiNetWarn" style="display:none;"></div>
   <details class="card" id="aiSettings" open>
     <summary><span class="icon">🔑</span>Provider &amp; key<span class="badge" id="aiBadge" style="font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:20px;background:rgba(0,229,255,.08);color:var(--cyan);border:1px solid var(--border);">not configured</span><span class="chev">▶</span></summary>
     <div class="inner">
       <p class="desc">Bring your own API key. The assistant explains your setup and <b>proposes</b> actions — nothing runs until you tap Apply.</p>
       <label class="field-label">Provider</label>
-      <select id="aiProvider"></select>
+      <div id="aiProvider"></div>
       <div id="aiBaseWrap" style="display:none;">
         <label class="field-label">Base URL (OpenAI-compatible)</label>
         <input type="text" id="aiBase" placeholder="http://192.168.1.20:11434/v1" autocapitalize="off" spellcheck="false">
       </div>
       <label class="field-label">Model</label>
       <div class="row">
-        <input type="text" id="aiModel" class="grow" list="aiModelList" autocapitalize="off" spellcheck="false">
+        <input type="text" id="aiModel" class="grow" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn-ghost" id="btnAiPick" title="Choose from fetched models">▾</button>
         <button class="btn-ghost" id="btnAiModels">⟳ Fetch</button>
       </div>
-      <datalist id="aiModelList"></datalist>
+      <div class="model-menu" id="aiModelMenu">
+        <input type="text" id="aiModelFilter" placeholder="filter models…" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="model-list" id="aiModelListBox"></div>
+      </div>
       <label class="field-label">API key</label>
       <div class="row">
         <input type="password" id="aiKey" class="grow" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -425,7 +451,21 @@ details.card > .inner{margin-top:8px;}
 
 <button class="panic-btn" id="btnPanicFloat" title="Panic">🚨</button>
 
-<script src="wall.js"></script>
-<script src="ai.js"></script>
+<script>
+// Surfaces script failures on screen instead of leaving buttons silently dead.
+(function () {
+  function show(msg) {
+    var b = document.getElementById('jsErrorBar'); if (!b) return;
+    b.style.display = 'block'; b.textContent = '⚠ Script error: ' + msg + ' — tap to dismiss';
+  }
+  window.addEventListener('error', function (e) {
+    show((e.message || 'error') + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + (e.lineno || 0) + ')');
+  });
+  window.addEventListener('unhandledrejection', function (e) { show(String(e.reason && e.reason.message || e.reason)); });
+  document.addEventListener('click', function (e) { if (e.target && e.target.id === 'jsErrorBar') e.target.style.display = 'none'; });
+})();
+</script>
+<script src="wall.js?v=1.2"></script>
+<script src="ai.js?v=1.2"></script>
 </body>
 </html>
