@@ -19,7 +19,7 @@ Block apps at the network level without root, using Android's built-in Chain 3 c
 
 <table>
   <tr>
-    <td width="20%"><img src="docs/screenshots/ai-provider.jpg" alt="AI assistant: provider and key" width="100%"></td>
+    <td width="20%"><img src="https://github.com/user-attachments/assets/eba61556-f800-4f01-aed4-11649468d45a" alt="AI assistant: provider and key" width="100%"></td>
     <td width="20%"><img src="docs/screenshots/ai-audit.jpg" alt="AI assistant: setup audit" width="100%"></td>
     <td width="20%"><img src="docs/screenshots/ai-actions.jpg" alt="AI assistant: proposed actions" width="100%"></td>
     <td width="20%"><img src="docs/screenshots/usage-tab.jpg" alt="Data usage tab" width="100%"></td>
