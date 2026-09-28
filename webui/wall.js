@@ -1,5 +1,5 @@
 // ===================== helpers =====================
-const VW_BUILD = '1.2';   // must match <meta name="vw-build"> in index.html and BUILD in ai.js
+const VW_BUILD = '1.3';   // must match <meta name="vw-build"> in index.html and BUILD in ai.js
 function shQuote(s){ return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 function runShell(cmd, timeoutSeconds){
   try {
@@ -470,9 +470,15 @@ function ensureChains(){
     'iptables -C INPUT -j VOIDWALL_IN 2>/dev/null || iptables -I INPUT 1 -j VOIDWALL_IN',
     'iptables -t nat -N VOIDWALL_NAT 2>/dev/null',
     'iptables -t nat -C PREROUTING -j VOIDWALL_NAT 2>/dev/null || iptables -t nat -I PREROUTING 1 -j VOIDWALL_NAT',
+    // IPv6 mirror chains — best-effort; devices without ip6tables simply no-op here and IPv6 recipes below fail individually with a clear error instead of blocking IPv4 setup.
+    'ip6tables -N VOIDWALL6 2>/dev/null',
+    'ip6tables -C OUTPUT -j VOIDWALL6 2>/dev/null || ip6tables -I OUTPUT 1 -j VOIDWALL6 2>/dev/null',
+    'ip6tables -N VOIDWALL6_IN 2>/dev/null',
+    'ip6tables -C INPUT -j VOIDWALL6_IN 2>/dev/null || ip6tables -I INPUT 1 -j VOIDWALL6_IN 2>/dev/null',
   ].join('; ');
   return runShell(cmd, 20);
 }
+const ipv6Available = () => runShell('command -v ip6tables >/dev/null 2>&1 && echo yes', 10).stdout.trim() === 'yes';
 
 document.getElementById('btnUnlockRoot').addEventListener('click', function(){
   const ok = confirm(
@@ -593,6 +599,8 @@ document.getElementById('btnFlushAll').addEventListener('click', async function(
       'iptables -D OUTPUT -j VOIDWALL 2>/dev/null', 'iptables -F VOIDWALL 2>/dev/null', 'iptables -X VOIDWALL 2>/dev/null',
       'iptables -D INPUT -j VOIDWALL_IN 2>/dev/null', 'iptables -F VOIDWALL_IN 2>/dev/null', 'iptables -X VOIDWALL_IN 2>/dev/null',
       'iptables -t nat -D PREROUTING -j VOIDWALL_NAT 2>/dev/null', 'iptables -t nat -F VOIDWALL_NAT 2>/dev/null', 'iptables -t nat -X VOIDWALL_NAT 2>/dev/null',
+      'ip6tables -D OUTPUT -j VOIDWALL6 2>/dev/null', 'ip6tables -F VOIDWALL6 2>/dev/null', 'ip6tables -X VOIDWALL6 2>/dev/null',
+      'ip6tables -D INPUT -j VOIDWALL6_IN 2>/dev/null', 'ip6tables -F VOIDWALL6_IN 2>/dev/null', 'ip6tables -X VOIDWALL6_IN 2>/dev/null',
       'echo done',
     ].join('; ');
     runShell(cmd, 20);
@@ -602,12 +610,27 @@ document.getElementById('btnFlushAll').addEventListener('click', async function(
 
 // ===================== RECIPES LIBRARY =====================
 const RECIPES = [
+  // ---------- VPN ----------
   {
     id: 'kill-switch-vpn', cat: 'vpn', risk: 'caution',
     title: 'VPN Kill Switch', desc: 'If the VPN drops, no traffic escapes through any other interface — zero leaks.',
     inputs: [{k:'iface', label:'VPN interface (usually tun0)', def:'tun0'}],
     cmd: t => `iptables -A VOIDWALL -o ${t.iface} -j RETURN; iptables -A VOIDWALL -o lo -j RETURN; iptables -A VOIDWALL -j DROP`,
   },
+  {
+    id: 'kill-switch-vpn6', cat: 'vpn', risk: 'caution',
+    title: 'VPN Kill Switch (IPv6)', desc: 'Same kill switch for IPv6 — without this, IPv6 traffic can bypass an IPv4-only kill switch entirely.',
+    inputs: [{k:'iface', label:'VPN interface (usually tun0)', def:'tun0'}],
+    cmd: t => `ip6tables -A VOIDWALL6 -o ${t.iface} -j RETURN; ip6tables -A VOIDWALL6 -o lo -j RETURN; ip6tables -A VOIDWALL6 -j DROP`,
+  },
+  {
+    id: 'vpn-lan-still-works', cat: 'vpn', risk: 'caution',
+    title: 'Kill switch that still allows local LAN', desc: 'Like the VPN kill switch, but keeps access to your home/office subnet (printers, NAS, smart home) even when the VPN is down.',
+    inputs: [{k:'iface', label:'VPN interface (usually tun0)', def:'tun0'}, {k:'subnet', label:'LAN subnet (CIDR)', def:'192.168.1.0/24'}],
+    cmd: t => `iptables -A VOIDWALL -o ${t.iface} -j RETURN; iptables -A VOIDWALL -o lo -j RETURN; iptables -A VOIDWALL -d ${t.subnet} -j RETURN; iptables -A VOIDWALL -j DROP`,
+  },
+
+  // ---------- BLOCK ----------
   {
     id: 'block-port-tcp', cat: 'block', risk: 'safe',
     title: 'Block an outgoing TCP port', desc: 'E.g. block port 25 (SMTP) or any other port from the device itself.',
@@ -620,11 +643,61 @@ const RECIPES = [
     cmd: t => `iptables -A VOIDWALL -p udp --dport ${t.port} -j DROP`,
   },
   {
-    id: 'block-ip-cidr', cat: 'block', risk: 'caution',
-    title: 'Block an IP or CIDR range', desc: 'Fully block a specific server or IP range.',
-    inputs: [{k:'cidr', label:'IP or CIDR', def:'203.0.113.0/24'}],
-    cmd: t => `iptables -A VOIDWALL -d ${t.cidr} -j DROP`,
+    id: 'block-port-range-tcp', cat: 'block', risk: 'safe',
+    title: 'Block a range of outgoing TCP ports', desc: 'E.g. 6000:6010 blocks every port from 6000 to 6010 inclusive.',
+    inputs: [{k:'range', label:'Port range (start:end)', def:'6000:6010'}],
+    cmd: t => `iptables -A VOIDWALL -p tcp --dport ${t.range} -j DROP`,
   },
+  {
+    id: 'block-ports-list-tcp', cat: 'block', risk: 'safe',
+    title: 'Block a list of outgoing TCP ports', desc: 'Comma-separated, e.g. 25,465,587 blocks several mail ports at once.',
+    inputs: [{k:'ports', label:'Ports (comma-separated, max 15)', def:'25,465,587'}],
+    cmd: t => `iptables -A VOIDWALL -p tcp -m multiport --dports ${t.ports} -j DROP`,
+  },
+  {
+    id: 'block-ip-cidr', cat: 'block', risk: 'caution',
+    title: 'Block an IP or CIDR range', desc: 'Fully block a specific server or IP range, both directions.',
+    inputs: [{k:'cidr', label:'IP or CIDR', def:'203.0.113.0/24'}],
+    cmd: t => `iptables -A VOIDWALL -d ${t.cidr} -j DROP; iptables -A VOIDWALL_IN -s ${t.cidr} -j DROP`,
+  },
+  {
+    id: 'block-ip-list', cat: 'block', risk: 'caution',
+    title: 'Block a list of IPs', desc: 'Comma-separated IPs or CIDRs, blocked outbound only (up to 15).',
+    inputs: [{k:'ips', label:'IPs (comma-separated, max 15)', def:'203.0.113.10,203.0.113.11'}],
+    cmd: t => t.ips.split(',').slice(0, 15).map(ip => `iptables -A VOIDWALL -d ${ip} -j DROP`).join('; '),
+  },
+  {
+    id: 'block-app-uid', cat: 'block', risk: 'caution',
+    title: 'Block outbound traffic for a specific app UID', desc: 'Root-level equivalent of Chain 3 blocking, by UID instead of package — useful on Android versions where Chain 3 is unavailable. Find the UID on the App Rules tab.',
+    inputs: [{k:'uid', label:'App UID', def:'10123'}],
+    cmd: t => `iptables -A VOIDWALL -m owner --uid-owner ${t.uid} -j DROP`,
+  },
+  {
+    id: 'block-quic', cat: 'block', risk: 'caution',
+    title: 'Block QUIC (UDP 443)', desc: 'Forces browsers/apps that prefer HTTP/3-over-QUIC back onto regular TCP HTTPS, which some content filters and monitoring tools can no longer see with QUIC enabled.',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL -p udp --dport 443 -j DROP`,
+  },
+  {
+    id: 'block-icmp-out', cat: 'block', risk: 'safe',
+    title: 'Block outgoing ping (ICMP echo)', desc: 'Stops the device from pinging other hosts. Some captive portals and network diagnostics may misbehave.',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL -p icmp --icmp-type echo-request -j DROP`,
+  },
+  {
+    id: 'block-broadcast', cat: 'block', risk: 'caution',
+    title: 'Drop outgoing broadcast traffic', desc: 'Blocks packets sent to the network broadcast address. Can break some LAN discovery features (casting, printers).',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL -d 255.255.255.255 -j DROP`,
+  },
+  {
+    id: 'reject-instead-of-drop', cat: 'block', risk: 'caution',
+    title: 'Reject a port instead of silently dropping it', desc: 'Sends an explicit "connection refused" instead of a silent timeout — apps fail faster instead of hanging, at the cost of confirming to a prober that the device exists.',
+    inputs: [{k:'port', label:'TCP port', def:'8080'}],
+    cmd: t => `iptables -A VOIDWALL -p tcp --dport ${t.port} -j REJECT --reject-with tcp-reset`,
+  },
+
+  // ---------- DNS ----------
   {
     id: 'force-dns', cat: 'dns', risk: 'safe',
     title: 'Force DNS to a specific server', desc: 'Redirects all DNS queries (port 53) to this server, regardless of what the system requested.',
@@ -639,6 +712,28 @@ const RECIPES = [
     cmd: () => `iptables -A VOIDWALL -p tcp --dport 853 -j DROP`,
   },
   {
+    id: 'block-mdns', cat: 'dns', risk: 'safe',
+    title: 'Block mDNS (port 5353)', desc: 'Stops local network service discovery (Bonjour/Chromecast-style) from announcing this device or resolving .local names.',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL_IN -p udp --dport 5353 -j DROP; iptables -A VOIDWALL -p udp --dport 5353 -j DROP`,
+  },
+  {
+    id: 'block-ntp', cat: 'dns', risk: 'safe',
+    title: 'Block NTP (port 123)', desc: 'Stops the device reaching out to time servers — a minor, rarely-used fingerprinting/tracking vector. May cause clock drift over time.',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL -p udp --dport 123 -j DROP`,
+  },
+  {
+    id: 'dns-leak-block-others', cat: 'dns', risk: 'caution',
+    title: 'Force DNS + block any other DNS attempt', desc: 'Redirects DNS to your chosen server, and additionally drops (rather than redirects) any DNS packet aimed at a different port-53 destination that slips past the redirect — the strictest anti-leak option.',
+    inputs: [{k:'dns', label:'DNS server IP', def:'1.1.1.1'}],
+    cmd: t => `iptables -t nat -A VOIDWALL_NAT -p udp --dport 53 -j DNAT --to-destination ${t.dns}:53; ` +
+              `iptables -t nat -A VOIDWALL_NAT -p tcp --dport 53 -j DNAT --to-destination ${t.dns}:53; ` +
+              `iptables -A VOIDWALL -p udp --dport 53 ! -d ${t.dns} -j DROP; iptables -A VOIDWALL -p tcp --dport 53 ! -d ${t.dns} -j DROP`,
+  },
+
+  // ---------- PROTECT ----------
+  {
     id: 'syn-flood', cat: 'protect', risk: 'safe',
     title: 'Rate-limit new connections (anti SYN-flood)', desc: 'Throttles a flood of new connection attempts — mainly useful while hotspotting.',
     inputs: [],
@@ -651,12 +746,61 @@ const RECIPES = [
     cmd: () => `iptables -A VOIDWALL_IN -p icmp --icmp-type echo-request -j DROP`,
   },
   {
+    id: 'drop-invalid', cat: 'protect', risk: 'safe',
+    title: 'Drop invalid packets', desc: 'Standard hardening — rejects packets the kernel\'s connection tracker cannot classify, a common sign of malformed or spoofed traffic.',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL_IN -m state --state INVALID -j DROP`,
+  },
+  {
+    id: 'drop-null-xmas-scan', cat: 'protect', risk: 'safe',
+    title: 'Drop NULL and XMAS scan probes', desc: 'Blocks two classic port-scanning techniques (packets with no flags set, or with an unusual combination of flags all set).',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL_IN -p tcp --tcp-flags ALL NONE -j DROP; iptables -A VOIDWALL_IN -p tcp --tcp-flags ALL ALL -j DROP`,
+  },
+  {
+    id: 'drop-fragments', cat: 'protect', risk: 'caution',
+    title: 'Drop fragmented packets', desc: 'Blocks IP fragments, sometimes used to smuggle traffic past simple filters. Can break some older or unusual network setups.',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL_IN -f -j DROP`,
+  },
+  {
+    id: 'limit-conn-per-ip', cat: 'protect', risk: 'caution',
+    title: 'Limit simultaneous connections from one LAN device', desc: 'Caps how many connections a single hotspot client can hold open at once — useful against a misbehaving or abusive device on your hotspot.',
+    inputs: [{k:'max', label:'Max connections', def:'50'}],
+    cmd: t => `iptables -A FORWARD -p tcp -m connlimit --connlimit-above ${t.max} --connlimit-mask 32 -j REJECT --reject-with tcp-reset`,
+  },
+  {
+    id: 'strict-lockdown', cat: 'protect', risk: 'danger',
+    title: 'Full lockdown — DNS + web only', desc: '⚠️ Blocks everything except DNS and port 80/443. High risk — may break many apps.',
+    inputs: [],
+    cmd: () => `iptables -A VOIDWALL -p udp --dport 53 -j RETURN; iptables -A VOIDWALL -p tcp --dport 53 -j RETURN; ` +
+               `iptables -A VOIDWALL -p tcp --dport 80 -j RETURN; iptables -A VOIDWALL -p tcp --dport 443 -j RETURN; ` +
+               `iptables -A VOIDWALL -o lo -j RETURN; iptables -A VOIDWALL -j DROP`,
+  },
+  {
+    id: 'time-window-block', cat: 'protect', risk: 'caution',
+    title: 'Block a port only during a time window', desc: 'E.g. block port 80 from 23:00 to 06:00 (device local time) — useful for a personal downtime/focus schedule. Requires the kernel\'s xt_time module.',
+    inputs: [{k:'port', label:'TCP port', def:'80'}, {k:'from', label:'Start (HH:MM)', def:'23:00'}, {k:'to', label:'End (HH:MM)', def:'06:00'}],
+    cmd: t => `iptables -A VOIDWALL -p tcp --dport ${t.port} -m time --timestart ${t.from} --timestop ${t.to} -j DROP`,
+  },
+
+  // ---------- PROXY ----------
+  {
     id: 'redirect-local', cat: 'proxy', risk: 'caution',
     title: 'Transparent redirect to a local proxy', desc: 'Routes all outgoing port 80/443 traffic into a local proxy/SOCKS listener.',
     inputs: [{k:'targetport', label:'Local proxy port', def:'12345'}],
     cmd: t => `iptables -t nat -A VOIDWALL_NAT -p tcp --dport 80 -j REDIRECT --to-port ${t.targetport}; ` +
               `iptables -t nat -A VOIDWALL_NAT -p tcp --dport 443 -j REDIRECT --to-port ${t.targetport}`,
   },
+  {
+    id: 'redirect-app-only', cat: 'proxy', risk: 'caution',
+    title: 'Redirect only one app\'s traffic to a local proxy', desc: 'Same transparent redirect, scoped to a single app by UID so the rest of the device is unaffected. Find the UID on the App Rules tab.',
+    inputs: [{k:'uid', label:'App UID', def:'10123'}, {k:'targetport', label:'Local proxy port', def:'12345'}],
+    cmd: t => `iptables -t nat -A VOIDWALL_NAT -p tcp -m owner --uid-owner ${t.uid} --dport 80 -j REDIRECT --to-port ${t.targetport}; ` +
+              `iptables -t nat -A VOIDWALL_NAT -p tcp -m owner --uid-owner ${t.uid} --dport 443 -j REDIRECT --to-port ${t.targetport}`,
+  },
+
+  // ---------- LAN ----------
   {
     id: 'lan-isolate-mac', cat: 'lan', risk: 'caution',
     title: 'Isolate a device by MAC (while hotspotting)', desc: 'That device gets neither internet nor access to other devices on the network.',
@@ -670,32 +814,100 @@ const RECIPES = [
     cmd: t => `iptables -I FORWARD -s ${t.ip} -o ${t.wan} -j DROP`,
   },
   {
+    id: 'lan-client-isolation', cat: 'lan', risk: 'caution',
+    title: 'Hotspot client isolation', desc: 'Clients on your hotspot can reach the internet but not each other — the same protection public Wi-Fi networks use.',
+    inputs: [{k:'subnet', label:'Hotspot subnet (CIDR)', def:'192.168.43.0/24'}],
+    cmd: t => `iptables -I FORWARD -s ${t.subnet} -d ${t.subnet} -j DROP`,
+  },
+  {
+    id: 'lan-allowlist-only', cat: 'lan', risk: 'danger',
+    title: 'Only allow specific LAN devices online', desc: '⚠️ Default-deny for hotspot clients: every device is blocked from the internet except the ones you allow. Add an ACCEPT rule per allowed IP first, or every client loses access.',
+    inputs: [{k:'allowedIp', label:'First allowed device IP', def:'192.168.43.10'}, {k:'wan', label:'Internet interface', def:'rmnet_data0'}],
+    cmd: t => `iptables -I FORWARD -s ${t.allowedIp} -o ${t.wan} -j ACCEPT; iptables -A FORWARD -o ${t.wan} -j DROP`,
+  },
+  {
     id: 'throttle-bandwidth', cat: 'lan', risk: 'danger',
     title: 'Throttle bandwidth on an interface (tc)', desc: 'Cap speed for everyone while hotspotting. Requires kernel tc/HTB support — not every device has it.',
     inputs: [{k:'iface', label:'Interface (e.g. wlan0)', def:'wlan0'}, {k:'rate', label:'Speed cap', def:'2mbit'}],
     cmd: t => `tc qdisc add dev ${t.iface} root tbf rate ${t.rate} burst 32kbit latency 400ms`,
   },
   {
-    id: 'log-dropped', cat: 'debug', risk: 'safe',
+    id: 'throttle-device', cat: 'lan', risk: 'danger',
+    title: 'Throttle a single hotspot device (tc + filter)', desc: 'Caps the speed of one client IP instead of the whole interface. Requires kernel tc/HTB support.',
+    inputs: [{k:'iface', label:'Interface (e.g. wlan0)', def:'wlan0'}, {k:'ip', label:'Device IP', def:'192.168.43.10'}, {k:'rate', label:'Speed cap', def:'1mbit'}],
+    cmd: t => `tc qdisc add dev ${t.iface} root handle 1: htb default 30; tc class add dev ${t.iface} parent 1: classid 1:1 htb rate 100mbit; ` +
+              `tc class add dev ${t.iface} parent 1:1 classid 1:10 htb rate ${t.rate}; ` +
+              `tc filter add dev ${t.iface} protocol ip parent 1:0 prio 1 u32 match ip dst ${t.ip}/32 flowid 1:10`,
+  },
+
+  // ---------- NAT / PORT FORWARDING ----------
+  {
+    id: 'port-forward-tcp', cat: 'nat', risk: 'caution',
+    title: 'Forward an incoming TCP port', desc: 'Routes an incoming connection on this device to another IP:port on the LAN — only meaningful while hotspot/tethering is active.',
+    inputs: [{k:'port', label:'Incoming port', def:'8080'}, {k:'dest', label:'Destination IP', def:'192.168.43.10'}, {k:'destport', label:'Destination port', def:'80'}],
+    cmd: t => `iptables -t nat -A VOIDWALL_NAT -p tcp --dport ${t.port} -j DNAT --to-destination ${t.dest}:${t.destport}; iptables -A FORWARD -j ACCEPT`,
+  },
+  {
+    id: 'port-forward-udp', cat: 'nat', risk: 'caution',
+    title: 'Forward an incoming UDP port', desc: 'Same as the TCP version, for UDP-based services (game servers, some VoIP).',
+    inputs: [{k:'port', label:'Incoming port', def:'27015'}, {k:'dest', label:'Destination IP', def:'192.168.43.10'}, {k:'destport', label:'Destination port', def:'27015'}],
+    cmd: t => `iptables -t nat -A VOIDWALL_NAT -p udp --dport ${t.port} -j DNAT --to-destination ${t.dest}:${t.destport}; iptables -A FORWARD -j ACCEPT`,
+  },
+  {
+    id: 'dmz-forward', cat: 'nat', risk: 'danger',
+    title: 'DMZ — forward every incoming port to one device', desc: '⚠️ Exposes one LAN device to everything reaching this device from outside. Only use for a device and threat model you fully understand.',
+    inputs: [{k:'dest', label:'Destination IP', def:'192.168.43.10'}],
+    cmd: t => `iptables -t nat -A VOIDWALL_NAT -j DNAT --to-destination ${t.dest}; iptables -A FORWARD -j ACCEPT`,
+  },
+
+  // ---------- IPv6 ----------
+  {
+    id: 'block-ipv6-all', cat: 'ipv6', risk: 'caution',
+    title: 'Block all IPv6 traffic', desc: 'The most common IPv6 leak fix: many VPN apps only tunnel IPv4, silently leaking IPv6 traffic outside the tunnel. This blocks IPv6 outright. No effect on devices without IPv6 connectivity.',
+    inputs: [],
+    cmd: () => `ip6tables -A VOIDWALL6 -o lo -j RETURN; ip6tables -A VOIDWALL6 -j DROP`,
+  },
+  {
+    id: 'block-ipv6-in', cat: 'ipv6', risk: 'safe',
+    title: 'Block incoming IPv6 connections', desc: 'Keeps outgoing IPv6 working but refuses unsolicited incoming IPv6 connections — a reasonable default on most networks.',
+    inputs: [],
+    cmd: () => `ip6tables -A VOIDWALL6_IN -m state --state NEW -j DROP`,
+  },
+  {
+    id: 'block-icmp6-redirect', cat: 'ipv6', risk: 'safe',
+    title: 'Ignore ICMPv6 redirects', desc: 'Blocks a class of IPv6 traffic-redirection packets sometimes used in local-network attacks.',
+    inputs: [],
+    cmd: () => `ip6tables -A VOIDWALL6_IN -p icmpv6 --icmpv6-type redirect -j DROP`,
+  },
+
+  // ---------- MONITOR / DEBUG ----------
+  {
+    id: 'log-dropped', cat: 'monitor', risk: 'safe',
     title: 'Log dropped packets', desc: 'For debugging — check with logcat or dmesg.',
     inputs: [],
     cmd: () => `iptables -I VOIDWALL 1 -j LOG --log-prefix "VOIDWALL-DROP: " --log-level 4`,
   },
   {
-    id: 'strict-lockdown', cat: 'protect', risk: 'danger',
-    title: 'Full lockdown — DNS + web only', desc: '⚠️ Blocks everything except DNS and port 80/443. High risk — may break many apps.',
-    inputs: [],
-    cmd: () => `iptables -A VOIDWALL -p udp --dport 53 -j RETURN; iptables -A VOIDWALL -p tcp --dport 53 -j RETURN; ` +
-               `iptables -A VOIDWALL -p tcp --dport 80 -j RETURN; iptables -A VOIDWALL -p tcp --dport 443 -j RETURN; ` +
-               `iptables -A VOIDWALL -o lo -j RETURN; iptables -A VOIDWALL -j DROP`,
+    id: 'log-app-traffic', cat: 'monitor', risk: 'safe',
+    title: 'Log all traffic from one app UID', desc: 'Every packet from this UID is logged (without being blocked) — useful to see what an app actually talks to. Find the UID on the App Rules tab.',
+    inputs: [{k:'uid', label:'App UID', def:'10123'}],
+    cmd: t => `iptables -I VOIDWALL 1 -m owner --uid-owner ${t.uid} -j LOG --log-prefix "VOIDWALL-UID-${t.uid}: " --log-level 4`,
+  },
+  {
+    id: 'count-only', cat: 'monitor', risk: 'safe',
+    title: 'Count matching packets without blocking them', desc: 'Adds a counter-only rule (RETURN) so you can watch how often a condition would match via "iptables -L VOIDWALL -v", before committing to actually blocking it.',
+    inputs: [{k:'port', label:'TCP port to watch', def:'443'}],
+    cmd: t => `iptables -A VOIDWALL -p tcp --dport ${t.port} -j RETURN`,
   },
 ];
+
 const RECIPE_CATS = [
   {id:'all', label:'All'}, {id:'vpn', label:'VPN'}, {id:'block', label:'Block'}, {id:'dns', label:'DNS'},
-  {id:'protect', label:'Protect'}, {id:'proxy', label:'Proxy'}, {id:'lan', label:'LAN'}, {id:'debug', label:'Debug'},
+  {id:'protect', label:'Protect'}, {id:'proxy', label:'Proxy'}, {id:'lan', label:'LAN'}, {id:'nat', label:'Port Forward'},
+  {id:'ipv6', label:'IPv6'}, {id:'monitor', label:'Monitor'},
 ];
 let recipeCat = 'all';
-const RECIPE_PARAM_RE = /^[A-Za-z0-9_.:\/-]{1,64}$/;   // recipe inputs end up inside shell commands
+const RECIPE_PARAM_RE = /^[A-Za-z0-9_.:,\/-]{1,64}$/;   // recipe inputs end up inside shell commands
 
 function initRecipeTabs(){
   const wrap = document.getElementById('recipeCatTabs');

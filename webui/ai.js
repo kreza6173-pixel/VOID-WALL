@@ -12,7 +12,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const BUILD = '1.2';
+const BUILD = '1.3';
 
 // ---------------------------------------------------------------- providers
 // `kind` decides the wire format. Model ids are only defaults — the field is editable
@@ -37,7 +37,7 @@ const CTX_DEFS = [
 ];
 
 const PKG_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$/;
-const SAFE_PARAM = /^[A-Za-z0-9_.:\/-]{1,64}$/;
+const SAFE_PARAM = /^[A-Za-z0-9_.:,\/-]{1,64}$/;   // kept in sync with RECIPE_PARAM_RE in wall.js
 const MAX_CTX_CHARS = 14000;
 
 // ---------------------------------------------------------------- state

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3
+
+### Added
+- **Recipe library expanded from 14 to 44 recipes across 9 categories** (VPN, Block, DNS, Protect, Proxy, LAN, Port Forward, IPv6, Monitor).
+- IPv6 support: mirror chains (`VOIDWALL6`, `VOIDWALL6_IN`) created alongside the IPv4 ones, with an IPv6 VPN kill switch, full and inbound-only IPv6 blocking, and ICMPv6 redirect filtering. Best-effort on devices without `ip6tables`.
+- New recipes include: kill switch that still allows the local LAN, port ranges and port lists, IP lists, per-app UID blocking and logging, QUIC blocking, mDNS/NTP blocking, strict DNS leak protection, invalid/NULL/XMAS/fragment packet drops, per-client connection limits, time-window blocking, per-app proxy redirection, hotspot client isolation, allow-list-only hotspot, per-device throttling, TCP/UDP port forwarding, DMZ, counter-only rules and per-app traffic logging.
+
+### Changed
+- "Wipe VOIDWALL" now also removes the IPv6 mirror chains.
+- Recipe inputs also accept commas (for port and IP lists); still no shell metacharacters.
+- "Block an IP or CIDR range" now blocks both directions.
+
+
 ## 1.2
 
 ### Added
