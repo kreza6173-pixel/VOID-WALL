@@ -1,296 +1,471 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>PULSE // INSTALL</title>
-<link rel="stylesheet" href="style.css">
-<script>(function(){try{if(localStorage.getItem('pulse-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
+<meta name="vw-build" content="1.3">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>VOID//WALL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05060a; --bg2:#0a0c14; --cyan:#00e5ff; --magenta:#ff2bd6; --purple:#8b3cff; --red:#ff4d6d; --green:#4dffb0; --yellow:#e8ff3c; --orange:#ff9d4d;
+  --text:#e4e9f7; --text-dim:#7480a8;
+  --border:rgba(0,229,255,.18); --border-strong:rgba(0,229,255,.5);
+  --mono:'Share Tech Mono', monospace; --sans:'Rajdhani', sans-serif;
+}
+*{box-sizing:border-box;}
+html{-webkit-text-size-adjust:100%;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;font-weight:500;line-height:1.6;min-height:100vh;padding-bottom:96px;}
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+.bg .glow1{position:absolute;top:-25%;left:-10%;width:75%;height:65%;border-radius:50%;
+  background:radial-gradient(circle, rgba(255,77,109,.14), transparent 65%);animation:drift 20s ease-in-out infinite alternate;}
+.bg .glow2{position:absolute;bottom:-25%;right:-10%;width:75%;height:65%;border-radius:50%;
+  background:radial-gradient(circle, rgba(0,229,255,.16), transparent 65%);animation:drift 24s ease-in-out infinite alternate-reverse;}
+@keyframes drift{0%{transform:translate(0,0);}100%{transform:translate(5%,4%);}}
+.bg .grid{position:absolute;inset:0;opacity:.05;
+  background-image:linear-gradient(rgba(0,229,255,.6) 1px, transparent 1px),linear-gradient(90deg, rgba(0,229,255,.6) 1px, transparent 1px);
+  background-size:38px 38px;}
+
+/* ===== header ===== */
+header{position:sticky;top:0;z-index:30;background:#08090f;border-bottom:1px solid var(--border);}
+.header-top{display:flex;align-items:center;gap:10px;padding:12px 14px 8px;}
+.brand{display:flex;align-items:center;gap:9px;}
+.brand .dot{width:9px;height:9px;border-radius:2px;background:var(--red);box-shadow:0 0 10px var(--red);animation:pulse 2s infinite;flex:none;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.brand b{font-family:var(--mono);font-size:16px;letter-spacing:1.5px;font-weight:400;}
+.header-spacer{flex:1;}
+.status-strip{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 12px;}
+.pill{font-family:var(--mono);font-size:10px;padding:4px 9px;border-radius:20px;white-space:nowrap;border:1px solid var(--border);color:var(--text-dim);}
+.pill.ok{color:var(--green);background:rgba(77,255,176,.08);border-color:rgba(77,255,176,.4);}
+.pill.bad{color:var(--red);background:rgba(255,77,109,.08);border-color:rgba(255,77,109,.4);}
+.pill.warn{color:var(--orange);background:rgba(255,157,77,.08);border-color:rgba(255,157,77,.4);}
+.pill.info{color:var(--cyan);background:rgba(0,229,255,.06);border-color:var(--border-strong);}
+.pill.root{color:var(--purple);background:rgba(139,60,255,.1);border-color:rgba(139,60,255,.5);}
+
+#bridgeWarning,#chain3Warning{position:relative;z-index:2;margin:12px 14px;padding:13px 14px;border-radius:9px;font-size:13px;display:none;}
+#bridgeWarning{border:1px solid var(--red);background:rgba(255,77,109,.06);}
+#chain3Warning{border:1px solid var(--orange);background:rgba(255,157,77,.06);}
+
+.tabbar{position:relative;z-index:2;display:flex;gap:6px;overflow-x:auto;padding:12px 14px 0;scrollbar-width:none;}
+.tabbar::-webkit-scrollbar{display:none;}
+.tabbtn{flex:none;font-family:var(--mono);font-size:11px;padding:9px 14px;border-radius:9px 9px 0 0;border:1px solid var(--border);
+  border-bottom:none;color:var(--text-dim);background:rgba(255,255,255,.02);cursor:pointer;white-space:nowrap;transition:.15s;}
+.tabbtn.active{color:var(--cyan);border-color:var(--border-strong);background:rgba(0,229,255,.07);}
+
+main{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:0 14px 14px;}
+.tabpanel{display:none;padding-top:14px;animation:fadein .25s ease;}
+.tabpanel.active{display:block;}
+@keyframes fadein{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+
+.card{background:linear-gradient(160deg, rgba(255,255,255,.035), rgba(255,255,255,0) 60%);border:1px solid var(--border);
+  border-radius:12px;padding:18px;margin-bottom:14px;transition:border-color .2s;}
+.card:hover{border-color:rgba(0,229,255,.32);}
+.card-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.card-head .icon{font-size:19px;flex:none;filter:drop-shadow(0 0 6px rgba(0,229,255,.35));}
+.card-head h3{margin:0;font-size:16px;flex:1;font-weight:600;letter-spacing:.2px;}
+.card-head .badge{font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:20px;background:rgba(0,229,255,.08);color:var(--cyan);border:1px solid var(--border);flex:none;}
+.card p.desc{font-size:13px;color:var(--text-dim);margin:4px 0 12px;font-weight:400;}
+
+label.field-label{display:block;font-size:11.5px;color:var(--text-dim);margin:10px 0 4px;font-weight:400;}
+input[type=text],input[type=number],textarea{
+  width:100%;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;font-family:var(--mono);font-size:13.5px;transition:border-color .15s;
+}
+input:focus,textarea:focus{outline:none;border-color:var(--border-strong);}
+textarea{resize:vertical;min-height:70px;}
+
+button{font-family:var(--sans);font-size:14px;font-weight:600;border:none;border-radius:9px;padding:10px 16px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;transition:transform .1s, box-shadow .15s;}
+button:active{transform:scale(.97);}
+.btn-primary{background:linear-gradient(135deg, var(--cyan), #00b8d4);color:#03151a;box-shadow:0 2px 12px rgba(0,229,255,.25);}
+.btn-danger{background:linear-gradient(135deg, var(--red), #d6395a);color:#1a0508;box-shadow:0 2px 12px rgba(255,77,109,.25);}
+.btn-ghost{background:transparent;border:1px solid var(--border-strong);color:var(--cyan);font-weight:500;}
+.btn-ghost.purple{border-color:var(--purple);color:var(--purple);}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+button:disabled{opacity:.35;pointer-events:none;box-shadow:none;}
+button.loading::after{content:'';width:12px;height:12px;border:2px solid rgba(0,0,0,.3);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.toggle-switch{position:relative;width:46px;height:26px;flex:none;}
+.toggle-switch input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:rgba(255,255,255,.08);border:1px solid var(--border);border-radius:20px;cursor:pointer;transition:.2s;}
+.toggle-slider::before{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;background:var(--text-dim);border-radius:50%;transition:.2s;}
+.toggle-switch input:checked + .toggle-slider{background:rgba(255,77,109,.18);border-color:var(--red);}
+.toggle-switch input:checked + .toggle-slider::before{transform:translateX(20px);background:var(--red);}
+
+.toolbar{padding:10px 0;}
+#search{width:100%;padding:11px 12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
+  border-radius:9px;font-family:var(--mono);font-size:16px;margin-bottom:10px;}
+.tabs2{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;}
+.tabs2::-webkit-scrollbar{display:none;}
+.tab2{flex:none;font-family:var(--mono);font-size:11px;padding:7px 13px;border-radius:20px;border:1px solid var(--border);
+  color:var(--text-dim);background:transparent;cursor:pointer;white-space:nowrap;}
+.tab2.active{color:var(--cyan);border-color:var(--border-strong);background:rgba(0,229,255,.08);}
+
+.summary-bar{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;font-family:var(--mono);font-size:10.5px;color:var(--text-dim);}
+.summary-bar b{color:var(--text);}
+
+.app-list{border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.app-row{display:flex;align-items:center;gap:8px;padding:11px 13px;border-top:1px solid var(--border);font-size:12.5px;}
+.app-row:first-child{border-top:none;}
+.app-info{flex:1;min-width:0;}
+.pkg{font-family:var(--mono);font-size:11px;word-break:break-all;color:var(--text);}
+.tags{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;}
+.tag{font-family:var(--mono);font-size:8.5px;padding:2px 7px;border-radius:20px;}
+.tag.sys{color:var(--text-dim);background:rgba(255,255,255,.05);border:1px solid var(--border);}
+.tag.critical{color:var(--red);background:rgba(255,77,109,.12);border:1px solid var(--red);font-weight:600;}
+.tag.bg{color:var(--yellow);background:rgba(232,255,60,.08);border:1px solid rgba(232,255,60,.3);}
+.bg-toggle{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);display:flex;align-items:center;gap:5px;margin-top:6px;}
+.bg-toggle input{width:13px;height:13px;accent-color:var(--yellow);}
+
+.empty-note{padding:26px 16px;text-align:center;color:var(--text-dim);font-size:13.5px;}
+.empty-note .big{font-family:var(--mono);color:var(--cyan);font-size:14px;margin-bottom:6px;display:block;}
+
+.result-row{display:flex;justify-content:space-between;padding:6px 0;font-family:var(--mono);font-size:11px;color:var(--text-dim);}
+.result-row b{color:var(--text);}
+.result-row small{display:block;font-size:10.5px;opacity:.75;}
+
+.log-box{margin-top:10px;background:#020207;border:1px solid var(--border);border-radius:9px;padding:11px;max-height:200px;overflow-y:auto;
+  font-family:var(--mono);font-size:10.5px;color:#8bffe0;white-space:pre-wrap;word-break:break-all;}
+
+.warn-box{padding:13px 14px;border-radius:9px;border:1px solid var(--yellow);background:rgba(232,255,60,.05);font-size:12.5px;margin-bottom:14px;}
+.danger-box{padding:13px 14px;border-radius:9px;border:1px solid var(--red);background:rgba(255,77,109,.06);font-size:12.5px;margin-bottom:14px;}
+.hint{font-size:11.5px;color:var(--text-dim);margin-top:6px;}
+
+.panic-btn{position:fixed;bottom:18px;left:18px;z-index:40;width:56px;height:56px;border-radius:50%;
+  background:linear-gradient(135deg, var(--red), #b0233f);color:#fff;font-size:22px;border:none;
+  box-shadow:0 4px 24px rgba(255,77,109,.5);cursor:pointer;}
+.panic-btn:active{transform:scale(.93);}
+
+.recipe-card{border:1px solid var(--border);border-radius:11px;padding:15px;margin-bottom:11px;transition:border-color .2s;}
+.recipe-card:hover{border-color:rgba(0,229,255,.3);}
+.recipe-head{display:flex;align-items:flex-start;gap:8px;}
+.recipe-head h4{margin:0;font-size:14px;flex:1;font-weight:600;}
+.risk-badge{font-family:var(--mono);font-size:8.5px;padding:2px 8px;border-radius:20px;flex:none;white-space:nowrap;}
+.risk-badge.safe{color:var(--green);background:rgba(77,255,176,.1);border:1px solid rgba(77,255,176,.4);}
+.risk-badge.caution{color:var(--yellow);background:rgba(232,255,60,.08);border:1px solid rgba(232,255,60,.3);}
+.risk-badge.danger{color:var(--red);background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.4);}
+.recipe-desc{font-size:12px;color:var(--text-dim);margin:6px 0 10px;}
+.recipe-cmd-preview{font-family:var(--mono);font-size:10px;color:var(--cyan);background:rgba(0,229,255,.04);border:1px solid var(--border);
+  border-radius:6px;padding:9px;margin-bottom:9px;white-space:pre-wrap;word-break:break-all;}
+.recipe-inputs{display:grid;gap:6px;margin-bottom:8px;}
+.recipe-inputs input{font-size:12.5px;padding:8px 10px;}
+.recipe-inputs label{font-size:10.5px;color:var(--text-dim);}
+
+.diag-box{margin-top:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--red);background:rgba(255,77,109,.05);
+  font-family:var(--mono);font-size:10.5px;color:#ff9daa;white-space:pre-wrap;word-break:break-all;display:none;}
+
+
+/* ===== AI assistant ===== */
+input[type=password],select{
+  width:100%;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;font-family:var(--mono);font-size:13.5px;transition:border-color .15s;
+}
+select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--cyan) 50%),linear-gradient(135deg,var(--cyan) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:34px;}
+select option{background:#0a0c14;color:var(--text);}
+input[type=password]:focus,select:focus{outline:none;border-color:var(--border-strong);}
+details.card > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;}
+details.card > summary::-webkit-details-marker{display:none;}
+details.card > summary .chev{margin-left:auto;color:var(--text-dim);font-size:12px;transition:transform .2s;}
+details.card[open] > summary .chev{transform:rotate(90deg);}
+details.card > .inner{margin-top:8px;}
+.row .grow{flex:1;min-width:0;}
+.ctx-row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--border);font-size:13px;cursor:pointer;}
+.ctx-row:first-child{border-top:none;}
+.ctx-row input{margin-top:4px;width:16px;height:16px;accent-color:var(--cyan);flex:none;}
+.ctx-row small{display:block;color:var(--text-dim);font-size:11.5px;font-weight:400;}
+#aiCtxPreview{display:none;}
+.ai-chat{display:flex;flex-direction:column;gap:10px;margin:12px 0;}
+.ai-msg{padding:11px 13px;border-radius:12px;font-size:14px;line-height:1.55;word-break:break-word;text-align:start;}
+.ai-msg.user{align-self:flex-end;max-width:92%;background:rgba(0,229,255,.09);border:1px solid var(--border-strong);}
+.ai-msg.ai{align-self:stretch;background:rgba(255,255,255,.03);border:1px solid var(--border);}
+.ai-msg.err{border-color:var(--red);color:#ff9daa;background:rgba(255,77,109,.05);}
+.ai-msg.pending{color:var(--text-dim);animation:pulse 1.4s infinite;}
+.ai-msg code{font-family:var(--mono);font-size:12px;background:rgba(0,229,255,.08);padding:1px 5px;border-radius:4px;color:var(--cyan);}
+.ai-code{font-family:var(--mono);font-size:11px;background:#020207;border:1px solid var(--border);border-radius:8px;padding:9px;overflow-x:auto;white-space:pre;color:#8bffe0;margin:8px 0;direction:ltr;text-align:left;}
+.picker{position:relative;}
+.picker .picker-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:var(--mono);font-size:13.5px;font-weight:400;text-align:left;box-shadow:none;}
+.picker .picker-btn:active{transform:none;}
+.picker.open .picker-btn,.picker .picker-btn:focus{outline:none;border-color:var(--border-strong);}
+.picker .picker-caret{color:var(--cyan);font-size:12px;flex:none;transition:transform .15s;}
+.picker.open .picker-caret{transform:rotate(180deg);}
+.picker .model-list{max-height:340px;min-height:48px;}   /* fixed px: vh-based sizes collapse to 0 in some WebViews */
+.model-menu{display:none;margin-top:8px;border:1px solid var(--border-strong);border-radius:10px;background:#0a0c14;overflow:hidden;}
+.model-menu input{border:none;border-bottom:1px solid var(--border);border-radius:0;background:rgba(255,255,255,.03);}
+.model-list{max-height:260px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;}
+.model-item{padding:11px 12px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12.5px;color:var(--text);word-break:break-all;cursor:pointer;}
+.model-item:last-child{border-bottom:none;}
+.model-item.sel{color:var(--cyan);background:rgba(0,229,255,.07);}
+.model-empty{padding:14px 12px;color:var(--text-dim);font-size:13px;}
+.ai-msg.err{white-space:pre-wrap;}
+.ai-actions{margin-top:10px;display:grid;gap:8px;}
+.ai-action{border:1px solid var(--border-strong);border-radius:10px;padding:11px;background:rgba(0,0,0,.25);}
+.ai-action.rejected{border-color:var(--red);background:rgba(255,77,109,.05);}
+.ai-action-head{display:flex;align-items:center;gap:8px;}
+.ai-action-title{font-weight:600;font-size:13.5px;flex:1;}
+.ai-action-reason{font-size:12px;color:var(--text-dim);font-weight:400;}
+.ai-input-row{display:flex;gap:8px;align-items:flex-end;}
+.ai-input-row textarea{flex:1;min-height:44px;font-family:var(--sans);font-size:16px;}
+.ask-ai{background:transparent;border:1px solid var(--border);padding:4px 8px;font-size:13px;border-radius:8px;color:var(--text);flex:none;}
+
+::selection{background:var(--magenta);color:#fff;}
+</style>
 </head>
 <body>
+<div class="bg"><div class="glow1"></div><div class="glow2"></div><div class="grid"></div></div>
 
-<div id="bridge-warning" class="bridge-warning hidden">
-  <span data-i18n="bridgeWarning">Shell bridge unavailable. Set this module's access mode to Full, or Custom with
-  "WebUI shell bridge" enabled, in Shevery → ADB Modules.</span>
-  <div><button class="btn btn-ghost" id="bridge-retry-btn" style="margin-top:8px;" data-i18n="retryConnection">Retry connection</button></div>
-</div>
-
-<header class="instrument-header">
-  <div class="instrument-top-row">
-    <div>
-      <div class="product-name">PULSE<span class="slash">//</span>INSTALL</div>
-      <div class="product-sub" data-i18n="productSub">Universal APK / APKS / XAPK / APKM installer</div>
-    </div>
-    <div style="display:flex; align-items:center; gap:6px;">
-      <div id="bridge-badge" class="bridge-badge" data-i18n="checking">checking…</div>
-      <div class="lang-dropdown" id="lang-dropdown">
-        <button type="button" class="lang-dropdown-btn" id="lang-dropdown-btn" aria-haspopup="listbox" aria-expanded="false">
-          <span id="lang-dropdown-current">EN</span>
-          <span class="lang-dropdown-caret">▾</span>
-        </button>
-        <div class="lang-dropdown-menu hidden" id="lang-dropdown-menu" role="listbox">
-          <div class="lang-option active" data-lang="en" role="option" aria-selected="true">
-            <span class="lang-option-code">EN</span><span class="lang-option-name">English</span>
-          </div>
-          <div class="lang-option" data-lang="ar" role="option" aria-selected="false">
-            <span class="lang-option-code">AR</span><span class="lang-option-name">العربية</span>
-          </div>
-          <div class="lang-option" data-lang="fr" role="option" aria-selected="false">
-            <span class="lang-option-code">FR</span><span class="lang-option-name">Français</span>
-          </div>
-          <div class="lang-option" data-lang="es" role="option" aria-selected="false">
-            <span class="lang-option-code">ES</span><span class="lang-option-name">Español</span>
-          </div>
-          <div class="lang-option" data-lang="de" role="option" aria-selected="false">
-            <span class="lang-option-code">DE</span><span class="lang-option-name">Deutsch</span>
-          </div>
-        </div>
-      </div>
-      <button class="theme-toggle-btn" id="theme-toggle-btn" type="button">☾ dark</button>
-    </div>
+<header>
+  <div class="header-top">
+    <div class="brand"><span class="dot"></span><b>VOID//WALL</b></div>
+    <div class="header-spacer"></div>
   </div>
-  <div class="stat-strip">
-    <div class="stat-item"><span class="stat-num" id="stat-selected">0</span><span class="stat-lbl" data-i18n="lblSelected">selected</span></div>
-    <div class="stat-item"><span class="stat-num" id="stat-size">—</span><span class="stat-lbl" data-i18n="lblTotalSize">total size</span></div>
-    <div class="stat-item"><span class="stat-num" id="stat-unzip">…</span><span class="stat-lbl" data-i18n="lblUnzipTool">unzip tool</span></div>
+  <div class="status-strip">
+    <span class="pill" id="bridgeStatus">checking…</span>
+    <span class="pill" id="chain3Status">checking…</span>
+    <span class="pill root" id="rootStatus" style="display:none;">🔓 root</span>
   </div>
 </header>
 
-<nav class="tab-strip">
-  <button class="tab-btn active" data-tab="install" data-i18n="tabInstall">Install</button>
-  <button class="tab-btn" data-tab="inspect" data-i18n="tabInspect">Inspect</button>
-  <button class="tab-btn" data-tab="ai" data-i18n="tabAi">AI Assistant</button>
-  <button class="tab-btn" data-tab="extract" data-i18n="tabExtract">Extract</button>
-  <button class="tab-btn" data-tab="history" data-i18n="tabHistory">History</button>
-</nav>
+<div id="jsErrorBar" class="warn-box" style="display:none;margin:12px 14px;border-color:var(--red);background:rgba(255,77,109,.06);"></div>
+<div id="bridgeWarning"><b>⚠ Shell access is disabled.</b> Enable Full access or WebUI shell bridge in the module settings.</div>
+<div id="chain3Warning"><b>⚠ Chain 3 is unavailable</b> (requires Android 11+). Only background restriction (netpolicy) works — not full blocking.</div>
 
-<main class="content">
+<div class="tabbar">
+  <button class="tabbtn active" data-tab="dash">🎛️ Dashboard</button>
+  <button class="tabbtn" data-tab="apps">📦 App Rules</button>
+  <button class="tabbtn" data-tab="usage">📊 Data Usage</button>
+  <button class="tabbtn" data-tab="root">🔓 Root Advanced</button>
+  <button class="tabbtn" data-tab="recipes">📚 Recipes</button>
+  <button class="tabbtn" data-tab="ai">🤖 AI Assistant</button>
+  <button class="tabbtn" data-tab="io">💾 Import/Export</button>
+</div>
 
-  <!-- INSTALL -->
-  <section id="tab-install" class="panel-view active">
-    <div class="card">
-      <div class="card-title" data-i18n="autoFolderTitle">Auto-install folder</div>
-      <div class="card-desc" data-i18n="autoFolderDesc">
-        Drop files into <code>/sdcard/pulse-install/auto/</code> and they're installed
-        automatically the next time Shevery starts this module's session (e.g. on boot) —
-        or right now with the button below. Installed files move to that folder's
-        <code>installed/</code> subfolder so nothing gets installed twice.
+<main>
+
+<!-- ================= DASHBOARD ================= -->
+<div class="tabpanel active" id="tab-dash">
+  <div class="card">
+    <div class="card-head"><span class="icon">🧱</span><h3>Chain 3 Framework</h3></div>
+    <p class="desc">The core engine for full per-app blocking (foreground + background, Wi-Fi + mobile) without root. Must be enabled for app rules to take effect.</p>
+    <div class="row">
+      <label class="toggle-switch"><input type="checkbox" id="chain3Toggle"><span class="toggle-slider"></span></label>
+      <span style="font-size:13px;" id="chain3ToggleLabel">disabled</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="icon">📈</span><h3>Status Summary</h3></div>
+    <div class="summary-bar" id="dashSummary">Loading…</div>
+    <div class="row" style="margin-top:10px;"><button class="btn-ghost" id="btnDashRefresh">🔄 Refresh</button></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="icon">🚨</span><h3>Panic — Kill All Networking</h3></div>
+    <p class="desc">Instantly enables Airplane Mode — cuts <b>all</b> networking (not just app rules) on the entire device. For emergencies only.</p>
+    <div class="row"><button class="btn-danger" id="btnPanic">🚨 Kill Everything Now</button></div>
+  </div>
+</div>
+
+<!-- ================= APP RULES ================= -->
+<div class="tabpanel" id="tab-apps">
+  <div class="card">
+    <p class="desc" style="margin-bottom:0;">Block = full (Chain 3). "Background only" = a separate, independent restriction (netpolicy) that works alongside full blocking.</p>
+  </div>
+  <div class="row"><button class="btn-primary" id="btnScanApps">🔍 Scan Installed Apps</button></div>
+  <div class="diag-box" id="scanDiag"></div>
+  <div class="toolbar" id="appsToolbar" style="display:none;">
+    <input type="text" id="appSearch" placeholder="Search by package name…">
+    <div class="tabs2">
+      <button class="tab2 active" data-filter="all">All</button>
+      <button class="tab2" data-filter="user">User</button>
+      <button class="tab2" data-filter="blocked">Blocked</button>
+      <button class="tab2" data-filter="critical">⚠️ Critical</button>
+    </div>
+  </div>
+  <div class="summary-bar" id="appsSummary"></div>
+  <div id="appListWrap"></div>
+</div>
+
+<!-- ================= USAGE ================= -->
+<div class="tabpanel" id="tab-usage">
+  <div class="card">
+    <div class="card-head"><span class="icon">📊</span><h3>Data Usage</h3></div>
+    <p class="desc">From <code>dumpsys netstats</code> — Android's recorded per-app traffic, split into mobile and Wi-Fi. Time buckets are coarse (1–2 h), so ranges are approximate.</p>
+    <div class="hint" style="margin:0 0 10px;">With a VPN active, Android may file app traffic under the VPN tunnel (🔒), so the mobile / Wi-Fi split can be empty for those apps.</div>
+    <div id="usageRange"></div>
+    <div class="row" style="margin-top:10px;"><button class="btn-primary" id="btnScanUsage">📊 Show Usage</button></div>
+    <div class="hint" id="usageNote"></div>
+    <div class="diag-box" id="usageDiag"></div>
+    <div id="usageResult"></div>
+  </div>
+</div>
+
+<!-- ================= ROOT ADVANCED ================= -->
+<div class="tabpanel" id="tab-root">
+  <div class="card" id="rootGateCard" style="display:none;border-color:var(--purple);">
+    <div class="card-head"><span class="icon">🔓</span><h3>Advanced Features (root only)</h3></div>
+    <p class="desc">LAN rules, port forwarding, and a raw iptables scripting console — all inside a dedicated, fully-removable chain (<code>VOIDWALL</code>), isolated from the rest of the system.</p>
+    <div class="row"><button class="btn-ghost purple" id="btnUnlockRoot">🔓 Show &amp; acknowledge risk</button></div>
+  </div>
+
+  <div id="rootSection" style="display:none;">
+
+    <div class="card" style="border-color:var(--purple);">
+      <div class="card-head"><span class="icon">🌐</span><h3>LAN Rules</h3></div>
+      <p class="desc">Fully block a specific IP on your local network (e.g. another device on the same Wi-Fi).</p>
+      <label class="field-label">Target IP</label>
+      <input type="text" id="lanIp" placeholder="192.168.1.50">
+      <div class="row" style="margin-top:10px;">
+        <button class="btn-danger" id="btnLanBlock">Block</button>
+        <button class="btn-ghost" id="btnLanUnblock">Unblock</button>
       </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="auto-scan-btn" data-i18n="autoScanBtn">Scan auto-install folder now</button>
-        <button class="btn btn-ghost" id="auto-log-btn" data-i18n="viewLogBtn">View log</button>
-      </div>
-      <div id="auto-progress" class="progress-box hidden"></div>
+      <div class="log-box" id="lanLog">Ready.</div>
     </div>
 
-    <div class="card">
-      <div class="card-title" data-i18n="browseTitle">Browse device storage</div>
-      <div class="row-between" style="margin-bottom:9px;">
-        <input type="text" id="path-input" value="/sdcard/Download">
-        <button class="btn btn-secondary" id="path-go-btn" data-i18n="goBtn">Go</button>
+    <div class="card" style="border-color:var(--purple);">
+      <div class="card-head"><span class="icon">🔀</span><h3>Port Forwarding</h3></div>
+      <div class="row">
+        <div style="flex:1;"><label class="field-label">Source port</label><input type="number" id="fwdFrom" placeholder="8080"></div>
+        <div style="flex:1;"><label class="field-label">To IP:port</label><input type="text" id="fwdTo" placeholder="192.168.1.10:80"></div>
       </div>
-      <div id="file-list" class="item-list">
-        <div class="empty-state" data-i18n="loading">Loading…</div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn-primary" id="btnFwdAdd">Add rule</button>
+        <button class="btn-ghost" id="btnFwdClear">Clear all</button>
       </div>
+      <div class="log-box" id="fwdLog">Ready.</div>
     </div>
 
-    <div class="card">
-      <div class="card-title" data-i18n="vtTitle">VirusTotal scan</div>
-      <div class="card-desc" data-i18n="vtDesc">
-        Checks a file's SHA-256 hash against VirusTotal's database — fast, uses almost no
-        quota, and works for any file size, but only finds a result if <em>someone else</em>
-        has already scanned this exact file before. It never uploads the file itself (see
-        the README for why). Your key is stored only in this browser unless you clear it.
+    <div class="card" style="border-color:var(--red);">
+      <div class="card-head"><span class="icon">⚡</span><h3>Raw Script Console</h3></div>
+      <div class="danger-box">⚠ Raw shell commands run with root. Always Preview before running. A snapshot is taken automatically before every run so you can Undo.</div>
+      <textarea id="scriptInput" rows="4" placeholder="iptables -A VOIDWALL -p tcp --dport 22 -j DROP"></textarea>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn-ghost" id="btnScriptPreview">👁️ Preview</button>
+        <button class="btn-danger" id="btnScriptRun" disabled>▶ Run (after preview)</button>
+        <button class="btn-ghost" id="btnScriptUndo">↩ Undo last run</button>
       </div>
-      <label class="field">
-        <span data-i18n="vtKeyLabel">VirusTotal API key</span>
-        <div class="key-row">
-          <input type="password" id="vt-apikey-input" placeholder="paste your key…" data-i18n-placeholder="pasteKey">
-          <button class="key-toggle" id="vt-key-toggle-btn" type="button" data-i18n="show">show</button>
-        </div>
-      </label>
-      <label class="check-inline" style="margin-bottom:7px;"><input type="checkbox" id="vt-remember-key"> <span data-i18n="vtRemember">Remember key on this device</span></label>
-      <label class="check-inline" style="margin-bottom:7px;"><input type="checkbox" id="vt-scan-before"> <span data-i18n="vtScanBefore">Scan selected files before install</span></label>
-      <label class="check-inline"><input type="checkbox" id="vt-scan-after"> <span data-i18n="vtScanAfter">Scan selected files after install</span></label>
-      <div id="vt-progress" class="progress-box hidden"></div>
+      <div class="log-box" id="scriptLog">Ready.</div>
     </div>
 
-    <div class="card" id="split-bundle-card" hidden>
-      <div class="card-title" data-i18n="splitTitle">Multiple plain APKs selected</div>
-      <div class="card-desc" data-i18n="splitDesc">
-        If these are base + split APKs of <strong>one</strong> app (e.g. <code>base.apk</code> +
-        <code>split_config.arm64_v8a.apk</code>), install them together as a single package.
-        Otherwise, leave this off to install each one as its own separate app.
-      </div>
-      <label class="check-inline"><input type="checkbox" id="split-bundle-check"> <span data-i18n="splitCheck">These are split APKs of one app — install as a single bundle</span></label>
+    <div class="card" style="border-color:var(--red);">
+      <div class="card-head"><span class="icon">🧹</span><h3>Wipe All Root Rules</h3></div>
+      <p class="desc">Completely removes the <code>VOIDWALL</code> chain (LAN, port forwards, anything added via the script console) — the rest of the system is untouched.</p>
+      <div class="row"><button class="btn-danger" id="btnFlushAll">🧹 Wipe VOIDWALL</button></div>
     </div>
 
-    <div class="card">
-      <div class="card-title" data-i18n="installOptsTitle">Install options</div>
-      <label class="check-inline" style="margin-bottom:7px;"><input type="checkbox" id="opt-replace" checked> <span data-i18n="optReplace">Replace existing app if already installed (-r)</span></label>
-      <label class="check-inline" style="margin-bottom:7px;"><input type="checkbox" id="opt-grant"> <span data-i18n="optGrant">Auto-grant all runtime permissions (-g)</span></label>
-      <label class="check-inline"><input type="checkbox" id="opt-delete-after"> <span data-i18n="optDeleteAfter">Delete file after successful install</span></label>
-      <div class="btn-row" style="margin-top:12px;">
-        <button class="btn btn-primary" id="install-btn" disabled data-i18n-count="installBtn">Install selected (0)</button>
-      </div>
-      <div id="install-progress" class="progress-box hidden"></div>
-    </div>
-  </section>
+  </div>
+</div>
 
-  <!-- INSPECT -->
-  <section id="tab-inspect" class="panel-view">
-    <div class="card">
-      <div class="card-title" data-i18n="inspectTitle">APK inspector</div>
-      <div class="card-desc" data-i18n="inspectDesc">
-        Look inside a package before installing it. Pick a file from the Install tab's
-        browser and tap its <span class="inline-icon">🔍</span> icon, or enter a path
-        directly below.
-      </div>
-      <div class="row-between" style="margin-bottom:9px;">
-        <input type="text" id="inspect-path-input" placeholder="/sdcard/Download/app.apk" data-i18n-placeholder="inspectPathPlaceholder">
-        <button class="btn btn-secondary" id="inspect-go-btn" data-i18n="inspectBtn">Inspect</button>
-      </div>
-      <div id="inspect-result" class="inspect-result">
-        <div class="empty-state" data-i18n="inspectEmpty">No file inspected yet.</div>
-      </div>
+<!-- ================= RECIPES LIBRARY ================= -->
+<div class="tabpanel" id="tab-recipes">
+  <div class="card" id="recipesGateCard" style="display:none;border-color:var(--purple);">
+    <div class="card-head"><span class="icon">🔓</span><h3>Recipes require root</h3></div>
+    <p class="desc">This library uses common iptables/LAN rules — unlock root in the "Root Advanced" tab first, this opens automatically.</p>
+  </div>
+  <div id="recipesSection" style="display:none;">
+    <div class="toolbar">
+      <input type="text" id="recipeSearch" placeholder="Search recipes…">
+      <div class="tabs2" id="recipeCatTabs"></div>
     </div>
-  </section>
+    <div id="recipeList"></div>
+  </div>
+</div>
 
-  <!-- AI -->
-  <section id="tab-ai" class="panel-view">
-    <div class="card">
-      <div class="card-title" data-i18n="aiTitle">AI assistant</div>
-      <div class="card-desc" data-i18n="aiDesc">
-        Ask an AI model to look at this package's manifest data (and VirusTotal result, if
-        available) and share an opinion — plain permissions, unusual behavior, anything
-        worth a second look — before you install. This calls the API endpoint you configure
-        below directly from your browser; nothing is sent anywhere else, and your key is
-        stored only on this device unless you clear it. The AI's answer is a starting point
-        for your own judgment, not a verdict.
+<!-- ================= AI ASSISTANT ================= -->
+<div class="tabpanel" id="tab-ai">
+  <div class="warn-box" id="aiBuildWarn" style="display:none;border-color:var(--red);"></div>
+  <div class="warn-box" id="aiNetWarn" style="display:none;"></div>
+  <details class="card" id="aiSettings" open>
+    <summary><span class="icon">🔑</span>Provider &amp; key<span class="badge" id="aiBadge" style="font-family:var(--mono);font-size:9px;padding:3px 8px;border-radius:20px;background:rgba(0,229,255,.08);color:var(--cyan);border:1px solid var(--border);">not configured</span><span class="chev">▶</span></summary>
+    <div class="inner">
+      <p class="desc">Bring your own API key. The assistant explains your setup and <b>proposes</b> actions — nothing runs until you tap Apply.</p>
+      <label class="field-label">Provider</label>
+      <div id="aiProvider"></div>
+      <div id="aiBaseWrap" style="display:none;">
+        <label class="field-label">Base URL (OpenAI-compatible)</label>
+        <input type="text" id="aiBase" placeholder="http://192.168.1.20:11434/v1" autocapitalize="off" spellcheck="false">
       </div>
-      <label class="field">
-        <span data-i18n="aiProviderLabel">AI provider</span>
-        <div class="select-dropdown" id="ai-provider-dropdown">
-          <button type="button" class="select-dropdown-btn" id="ai-provider-btn" aria-haspopup="listbox" aria-expanded="false">
-            <span id="ai-provider-current">Anthropic (Claude)</span><span class="lang-dropdown-caret">▾</span>
-          </button>
-          <div class="select-dropdown-menu hidden" id="ai-provider-menu" role="listbox">
-            <div class="select-option active" data-provider="anthropic" role="option" aria-selected="true">Anthropic (Claude)</div>
-            <div class="select-option" data-provider="openai" role="option" aria-selected="false">OpenAI (or compatible)</div>
-            <div class="select-option" data-provider="gemini" role="option" aria-selected="false">Google Gemini</div>
-          </div>
-        </div>
-      </label>
-      <label class="field">
-        <span data-i18n="aiEndpointLabel">API endpoint (auto-filled from the provider above — edit for a custom/self-hosted one)</span>
-        <input type="text" id="ai-endpoint-input" placeholder="https://api.anthropic.com/v1/messages" data-i18n-placeholder="aiEndpointPlaceholder">
-      </label>
-      <label class="field">
-        <span data-i18n="aiModelLabel">Model name</span>
-        <div class="select-dropdown" id="ai-model-dropdown">
-          <button type="button" class="select-dropdown-btn" id="ai-model-btn" aria-haspopup="listbox" aria-expanded="false">
-            <span data-i18n="aiModelPresetsLabel">Preset models…</span><span class="lang-dropdown-caret">▾</span>
-          </button>
-          <div class="select-dropdown-menu hidden" id="ai-model-menu" role="listbox"></div>
-        </div>
-        <input type="text" id="ai-model-input" style="margin-top:7px;" placeholder="claude-sonnet-4-6" data-i18n-placeholder="aiModelPlaceholder">
-      </label>
-      <label class="field">
-        <span data-i18n="aiKeyLabel">API key</span>
-        <div class="key-row">
-          <input type="password" id="ai-apikey-input" placeholder="paste your key…" data-i18n-placeholder="pasteKey">
-          <button class="key-toggle" id="ai-key-toggle-btn" type="button" data-i18n="show">show</button>
-        </div>
-      </label>
-      <label class="check-inline"><input type="checkbox" id="ai-remember-key"> <span data-i18n="aiRemember">Remember settings on this device</span></label>
-      <div class="btn-row" style="margin-top:10px;">
-        <button class="btn btn-primary" id="ai-analyze-btn" data-i18n="aiAnalyzeBtn">Analyze last inspected APK</button>
+      <label class="field-label">Model</label>
+      <div class="row">
+        <input type="text" id="aiModel" class="grow" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn-ghost" id="btnAiPick" title="Choose from fetched models">▾</button>
+        <button class="btn-ghost" id="btnAiModels">⟳ Fetch</button>
       </div>
-      <div id="ai-progress" class="progress-box hidden"></div>
-      <div id="ai-answer" class="ai-answer hidden"></div>
-      <label class="field" style="margin-top:12px;">
-        <span data-i18n="aiQuestionLabel">Ask a follow-up question</span>
-        <textarea id="ai-question-input" rows="2" placeholder="e.g. why does it need SMS permission?" data-i18n-placeholder="aiQuestionPlaceholder"></textarea>
-      </label>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="ai-ask-btn" data-i18n="aiAskBtn">Ask</button>
+      <div class="model-menu" id="aiModelMenu">
+        <input type="text" id="aiModelFilter" placeholder="filter models…" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="model-list" id="aiModelListBox"></div>
       </div>
+      <label class="field-label">API key</label>
+      <div class="row">
+        <input type="password" id="aiKey" class="grow" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn-ghost" id="btnAiKeyEye" title="Show / hide">👁</button>
+      </div>
+      <label class="bg-toggle" style="margin-top:10px;"><input type="checkbox" id="aiRemember"> remember key on this device (stored locally in this WebUI)</label>
+      <div class="row" style="margin-top:10px;"><button class="btn-ghost" id="btnAiForget">🗑 Forget all keys</button></div>
+      <div class="hint" id="aiCfgHint"></div>
     </div>
-  </section>
+  </details>
 
-  <!-- HISTORY -->
-  <section id="tab-history" class="panel-view">
-    <div class="card">
-      <div class="card-title-row">
-        <div class="card-title" data-i18n="historyTitle">Install history</div>
-        <button class="btn btn-ghost" id="history-clear-btn" data-i18n="clearBtn">Clear</button>
-      </div>
-      <div id="history-list" class="item-list">
-        <div class="empty-state" data-i18n="historyEmpty">Nothing installed through PULSE//INSTALL yet.</div>
-      </div>
+  <details class="card" id="aiPrivacy">
+    <summary><span class="icon">🛡️</span>What gets shared<span class="chev">▶</span></summary>
+    <div class="inner">
+      <p class="desc">Only what is ticked below is sent to your provider with each message. Off by default: app list, data usage, root rules.</p>
+      <div id="aiCtxBox"></div>
+      <div class="row" style="margin-top:10px;"><button class="btn-ghost" id="btnAiPreviewCtx">👁️ Preview what will be sent</button></div>
+      <div class="log-box" id="aiCtxPreview"></div>
     </div>
-  </section>
+  </details>
 
-  <!-- EXTRACT -->
-  <section id="tab-extract" class="panel-view">
-    <div class="card">
-      <div class="card-title-row">
-        <div class="card-title" data-i18n="extractTitle">Extract an installed app</div>
-        <button class="btn btn-secondary" id="scan-extract-apps-btn" data-i18n="extractScanBtn">Scan installed apps</button>
-      </div>
-      <div class="card-desc" data-i18n="extractDesc">
-        Pulls an installed app's APK (and splits, if any) back out to a file — either as
-        loose <code>.apk</code> files, or bundled into a <code>.xapk</code> you can hand to
-        this same installer (or any XAPK-compatible one) later. This produces a functionally
-        valid XAPK — see the README for how it compares to APKPure's own.
-      </div>
-      <div class="row-between" style="margin-bottom:9px;">
-        <input type="text" id="extract-app-search" placeholder="Filter by package name…" data-i18n-placeholder="extractFilterPlaceholder">
-        <label class="check-inline"><input type="checkbox" id="extract-scope-user" checked> <span data-i18n="extractUserOnly">User apps only</span></label>
-      </div>
-      <div id="extract-app-list" class="item-list">
-        <div class="empty-state" data-i18n="extractEmpty">Run a scan to list installed apps.</div>
-      </div>
+  <div class="card">
+    <div class="card-head"><span class="icon">🤖</span><h3>Assistant</h3><button class="btn-ghost" id="btnAiClear" style="padding:5px 10px;font-size:12px;">Clear</button></div>
+    <div class="tabs2" id="aiChips"></div>
+    <div class="ai-chat" id="aiChat"></div>
+    <div class="ai-input-row">
+      <textarea id="aiInput" rows="2" placeholder="Ask about your firewall, an app, a rule…" dir="auto"></textarea>
+      <button class="btn-primary" id="btnAiSend">➤ Send</button>
     </div>
+    <div class="hint">Replies can be wrong. Every proposed action is re-checked locally and needs your tap; critical packages can never be blocked.</div>
+  </div>
+</div>
 
-    <div class="card">
-      <div class="card-title" data-i18n="outputTitle">Output</div>
-      <label class="field">
-        <span data-i18n="formatLabel">Format</span>
-        <select id="extract-format">
-          <option value="loose" data-i18n="formatLoose">Loose APK files (base + splits)</option>
-          <option value="xapk" data-i18n="formatXapk">.xapk bundle</option>
-        </select>
-      </label>
-      <p class="muted" style="font-size:11px;" data-i18n="extractSavedTo">Saved to <code>/sdcard/Download/pulse-extracted/</code></p>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="extract-btn" disabled data-i18n-count="extractBtn">Extract selected (0)</button>
-      </div>
-      <div id="extract-progress" class="progress-box hidden"></div>
-    </div>
-  </section>
+<!-- ================= IMPORT/EXPORT ================= -->
+<div class="tabpanel" id="tab-io">
+  <div class="card">
+    <div class="card-head"><span class="icon">📤</span><h3>Export</h3></div>
+    <p class="desc">Exports blocked packages + background restrictions as JSON (root rules aren't included — they're device-specific).</p>
+    <div class="row"><button class="btn-primary" id="btnExport">📤 Export</button></div>
+    <textarea id="exportOutput" rows="6" readonly style="margin-top:10px;display:none;"></textarea>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="icon">📥</span><h3>Import</h3></div>
+    <p class="desc">Paste a previously exported JSON — rules are re-applied (existing blocks are kept, this only adds).</p>
+    <textarea id="importInput" rows="6" placeholder='{"blockedPackages":["com.example.app"],"bgRestrictedUids":[...]}'></textarea>
+    <div class="row" style="margin-top:10px;"><button class="btn-primary" id="btnImport">📥 Import &amp; apply</button></div>
+    <div class="log-box" id="importLog">Ready.</div>
+  </div>
+</div>
 
 </main>
 
-<div class="console-drawer" id="console-drawer">
-  <div class="console-header" id="console-toggle">
-    <span data-i18n="console">Console</span>
-    <span class="console-count" id="console-count">0</span>
-  </div>
-  <div class="console-body" id="console-body"></div>
-</div>
+<button class="panic-btn" id="btnPanicFloat" title="Panic">🚨</button>
 
-<div class="modal-backdrop hidden" id="confirm-backdrop">
-  <div class="modal">
-    <div class="modal-title" id="confirm-title" data-i18n="confirmAction">Confirm action</div>
-    <div class="modal-body" id="confirm-body"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" id="confirm-cancel" data-i18n="cancel">Cancel</button>
-      <button class="btn btn-danger" id="confirm-ok" data-i18n="confirm">Confirm</button>
-    </div>
-  </div>
-</div>
-
-<script src="script.js"></script>
+<script>
+// Surfaces script failures on screen instead of leaving buttons silently dead.
+(function () {
+  function show(msg) {
+    var b = document.getElementById('jsErrorBar'); if (!b) return;
+    b.style.display = 'block'; b.textContent = '⚠ Script error: ' + msg + ' — tap to dismiss';
+  }
+  window.addEventListener('error', function (e) {
+    show((e.message || 'error') + ' (' + String(e.filename || '').split('/').pop().split('?')[0] + ':' + (e.lineno || 0) + ')');
+  });
+  window.addEventListener('unhandledrejection', function (e) { show(String(e.reason && e.reason.message || e.reason)); });
+  document.addEventListener('click', function (e) { if (e.target && e.target.id === 'jsErrorBar') e.target.style.display = 'none'; });
+})();
+</script>
+<script src="wall.js?v=1.3"></script>
+<script src="ai.js?v=1.3"></script>
 </body>
 </html>
