@@ -1,8 +1,7 @@
-id=void-wall
-name=VOID//WALL
-version=1.3
-versionCode=4
-author=privshell
-description=ADB-based firewall — full per-app blocking without root (Android Chain 3), background-data restriction (netpolicy), and real iptables/LAN rules for rooted devices (behind an explicit consent gate). 44 ready-made recipes across 9 categories, including IPv6 controls. Per-app data usage monitor, JSON import/export, panic button. Optional bring-your-own-key AI assistant (OpenAI, Claude, Gemini, DeepSeek, Mistral, xAI, local).
-webui=webui
+id=pulse-install
+name=PULSE // INSTALL
+version=v1.1.0
+versionCode=2
+author=kreza6173-pixel
+description=Universal installer for APK, APKS, XAPK, and APKM files — single or batch, with a built-in device file browser, pre-install APK/manifest inspection, an optional AI review assistant, install history, and a WebUI translated into Arabic, French, Spanish, and German.
 usesShellBridge=true
