@@ -12,7 +12,7 @@
 'use strict';
 
 const $ = id => document.getElementById(id);
-const BUILD = '1.3';
+const BUILD = '1.4';
 
 // ---------------------------------------------------------------- providers
 // `kind` decides the wire format. Model ids are only defaults — the field is editable

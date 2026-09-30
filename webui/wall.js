@@ -1,5 +1,5 @@
 // ===================== helpers =====================
-const VW_BUILD = '1.3';   // must match <meta name="vw-build"> in index.html and BUILD in ai.js
+const VW_BUILD = '1.4';   // must match <meta name="vw-build"> in index.html and BUILD in ai.js
 function shQuote(s){ return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
 function runShell(cmd, timeoutSeconds){
   try {
@@ -306,6 +306,266 @@ function renderAppList(){
   });
 }
 
+// ===================== ADAPTIVE BLOCKING =====================
+const ADAPTIVE = {
+  dataThresholdMB: 50,
+  connectionThreshold: 50,
+  blockedCategories: ['social', 'gaming', 'streaming'],
+};
+
+let adaptiveCache = { learned: false, topApps: [], connectionCounts: {}, lastScan: 0 };
+
+function loadAdaptiveCache(){
+  try {
+    const raw = lsGet('vw_adaptive_cache', false);
+    if (raw) {
+      adaptiveCache = Object.assign(adaptiveCache, JSON.parse(raw));
+    }
+  } catch(e) {}
+}
+
+function saveAdaptiveCache(){
+  try { lsSet('vw_adaptive_cache', JSON.stringify(adaptiveCache)); } catch(e) {}
+}
+
+function detectAppCategory(pkg){
+  const pkgStr = pkg.toLowerCase();
+  if (/facebook|instagram|tiktok|twitter|x\.com|snapchat|reddit|linkedin|pinterest|telegram/i.test(pkgStr)) return 'social';
+  if (/game| PUBG|callofduty|fortnite|minecraft|steam|epic/i.test(pkgStr)) return 'gaming';
+  if (/youtube|netflix|stream|twitch|spotify|music/i.test(pkgStr)) return 'streaming';
+  if (/vpn|proxy/i.test(pkgStr)) return 'vpn';
+  if (/browser|chrome|firefox|samsung\.internet/i.test(pkgStr)) return 'browser';
+  return 'other';
+}
+
+// ===================== DARK WEB / SUSPICIOUS CONNECTION MONITORING =====================
+const SUSPICIOUS_SERVERS = [
+  { host: 'graph.facebook.com', concern: 'Facebook analytics/telemetry' },
+  { host: 'api.mixpanel.com', concern: 'Mixpanel analytics' },
+  { host: 'api.amplitude.com', concern: 'Amplitude analytics' },
+  { host: 'api.adjust.com', concern: 'Adjust tracking' },
+  { host: 'api.appsflyer.com', concern: 'AppsFlyer attribution' },
+  { host: 'sentry.io', concern: 'Error tracking' },
+  { host: 'firebaseinstallations.googleapis.com', concern: 'Firebase analytics' },
+  { host: 'app-measurement.com', concern: 'Google Analytics' },
+  { host: 'doubleclick.net', concern: 'Ad tracking' },
+  { host: 'adservice.google.com', concern: 'Google ads' },
+  { host: 'analytics.google.com', concern: 'Google Analytics' },
+  { host: 'crashlytics.com', concern: 'Crash reporting' },
+  { host: 'branch.io', concern: 'Deep link tracking' },
+  { host: 'telemetry.vortex.data.microsoft.com', concern: 'Microsoft telemetry' },
+  { host: 'oca.omtrdc.net', concern: 'Adobe tracking' },
+  { host: 'metrics.crashlytics.com', concern: 'Firebase crash metrics' },
+  { host: 'reports.crashlytics.dev', concern: 'Crash reporting upload' },
+  { host: 'pastebin.com', concern: 'Data exfiltration risk' },
+  { host: 'transfer.sh', concern: 'File upload risk' },
+  { host: 'hastebin.com', concern: 'Data exfiltration risk' },
+];
+
+const SUSPICIOUS_PORTS = [4443, 4444, 1337, 31337, 55555, 0];
+
+function scanNetworkConnections(){
+  const connections = [];
+  const tcp = runShell('cat /proc/net/tcp 2>/dev/null', 10);
+  const tcp6 = runShell('cat /proc/net/tcp6 2>/dev/null', 10);
+  const udp = runShell('cat /proc/net/udp 2>/dev/null', 10);
+  const names = uidPackageMap();
+
+  const parseNet = (data, proto) => {
+    if (!data.ok || !data.stdout) return;
+    const lines = data.stdout.split('\n').slice(1);
+    lines.forEach(line => {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 10) return;
+      const remote = parts[2], uid = parts[7];
+      if (!remote || remote === '00000000:0000') return;
+      const [hexAddr, hexPort] = remote.split(':');
+      const port = parseInt(hexPort, 16);
+      if (SUSPICIOUS_PORTS.includes(port)) {
+        const uidNum = parseInt(uid);
+        connections.push({
+          remote: hexToIp(hexAddr) + ':' + port,
+          port,
+          uid: uidNum,
+          pkg: names[uidNum] || 'unknown',
+          proto,
+          concern: `Uncommon port ${port}`
+        });
+      }
+    });
+  };
+
+  parseNet(tcp, 'tcp');
+  parseNet(tcp6, 'tcp6');
+  parseNet(udp, 'udp');
+  return connections;
+}
+
+function hexToIp(hex){
+  if (!hex || hex.length !== 8) return '0.0.0.0';
+  const n = parseInt(hex, 16);
+  return ((n & 0xFF) + '.' + ((n >> 8 & 0xFF)) + '.' + ((n >> 16 & 0xFF)) + '.' + ((n >> 24 & 0xFF)));
+}
+
+function scanConnections(){
+  const r = runShell('dumpsys netstats detail 2>/dev/null', 90);
+  const lines = r.stdout || '';
+  const now = Date.now();
+  const uidActivity = {};
+  const identRegex = /ident=\[.*?\] uid=(\d+)/g;
+  let match;
+  while ((match = identRegex.exec(lines)) !== null) {
+    const uid = match[1];
+    uidActivity[uid] = (uidActivity[uid] || 0) + 1;
+  }
+  const names = uidPackageMap();
+  const usage = netstatsRows(0);
+  const appData = {};
+  usage.rows.forEach(row => {
+    const pkg = names[row.uid] || row.pkg;
+    if (pkg && !pkg.startsWith('uid:')) {
+      if (!appData[pkg]) appData[pkg] = { pkg, uid: row.uid, rx: 0, tx: 0, connections: 0, category: detectAppCategory(pkg) };
+      appData[pkg].rx += row.mobile;
+      appData[pkg].tx += row.wifi;
+      appData[pkg].connections = uidActivity[row.uid] || 0;
+    }
+  });
+  const suspiciousDomains = [];
+  const suspiciousConns = scanNetworkConnections();
+  suspiciousConns.forEach(conn => {
+    suspiciousDomains.push(`${conn.proto}:// ${conn.remote} (${conn.concern}) — ${conn.pkg || 'unknown app'}`);
+  });
+  const topApps = Object.values(appData)
+    .map(a => ({ ...a, totalBytes: a.rx + a.tx }))
+    .sort((a, b) => b.totalBytes - a.totalBytes);
+  adaptiveCache.topApps = topApps.slice(0, 30);
+  adaptiveCache.connectionCounts = uidActivity;
+  adaptiveCache.lastScan = now;
+  saveAdaptiveCache();
+  return { topApps: topApps.slice(0, 15), suspiciousDomains };
+}
+
+async function runAdaptiveAnalysis(tab){
+  await withBusy(tab, async () => {
+    showDiag('adaptiveDiag', null);
+    const result = scanConnections();
+    const cache = result.topApps;
+    const suspicious = result.suspiciousDomains;
+    if (!cache.length) {
+      document.getElementById('adaptiveResult').innerHTML = '<div class="empty-note"><span class="big">No usage data</span>Run Data Usage analysis first to gather app data.</div>';
+      return;
+    }
+    const thresholdBytes = ADAPTIVE.dataThresholdMB * 1024 * 1024;
+    const recommendations = cache
+      .filter(app => app.totalBytes > thresholdBytes || app.connections > ADAPTIVE.connectionThreshold)
+      .map(app => {
+        const reasons = [];
+        if (app.totalBytes > thresholdBytes) reasons.push(`${fmtBytes(app.totalBytes)} data`);
+        if (app.connections > ADAPTIVE.connectionThreshold) reasons.push(`${app.connections} connections`);
+        return { ...app, reasons: reasons.join(', ') };
+      })
+      .slice(0, 10);
+
+    let html = '';
+    if (recommendations.length === 0) {
+      html = '<div class="empty-note"><span class="big">✓ All good</span>No apps exceed current thresholds.</div>';
+    } else {
+      html = '<div class="app-list">';
+      recommendations.forEach(app => {
+        const isBlocked = loadBlockedList().includes(app.pkg);
+        const isCritical = isCritical(app.pkg);
+        const catColor = { social: 'var(--cyan)', gaming: 'var(--magenta)', streaming: 'var(--purple)', vpn: 'var(--yellow)', browser: 'var(--green)' }[app.category] || 'var(--text-dim)';
+        html += `<div class="app-row">
+          <div class="app-info">
+            <div class="pkg">${esc(app.pkg)}</div>
+            <div class="tags">
+              <span class="tag sys" style="color:${catColor}">${app.category.toUpperCase()}</span>
+              ${isBlocked ? '<span class="tag bg">BLOCKED</span>' : ''}
+            </div>
+            <div class="hint" style="margin-top:4px;">${esc(app.reasons)}</div>
+          </div>
+          <button class="ask-ai" data-ask="${esc(app.pkg)}" title="Ask AI about this app">🤖</button>
+          ${!isCritical ? `<button class="btn-danger" data-adaptive-block="${app.pkg}" style="padding:6px 12px;font-size:11px;">${isBlocked ? 'Unblock' : 'Block'}</button>` : '<span class="tag critical">⚠️ CRITICAL</span>'}
+        </div>`;
+      });
+      html += '</div>';
+    }
+
+    document.getElementById('adaptiveResult').innerHTML = html;
+    document.getElementById('adaptiveResult').querySelectorAll('button[data-adaptive-block]').forEach(btn => {
+      btn.addEventListener('click', async function(){
+        const pkg = this.dataset.adaptiveBlock;
+        const wantBlock = !loadBlockedList().includes(pkg);
+        if (wantBlock && !chain3Supported) {
+          alert('Chain3 is unavailable — full blocking is not possible on this Android version.');
+          return;
+        }
+        if (wantBlock && isCritical(pkg)) {
+          alert('Cannot block protected package: ' + pkg);
+          return;
+        }
+        const action = wantBlock ? 'block' : 'unblock';
+        if (!confirm(`This will ${action} ${pkg} (${this.textContent.trim()}). Continue?`)) return;
+        await withBusy(this, async () => {
+          const list = loadBlockedList();
+          if (wantBlock) {
+            const r = runShell(`cmd connectivity set-package-networking-enabled false ${shQuote(pkg)}`, 15);
+            if (r.ok) { if (!list.includes(pkg)) list.push(pkg); saveBlockedList(list); }
+            else alert('Failed: ' + r.stderr);
+          } else {
+            const r = runShell(`cmd connectivity set-package-networking-enabled true ${shQuote(pkg)}`, 15);
+            if (r.ok) { const idx = list.indexOf(pkg); if (idx >= 0) list.splice(idx, 1); saveBlockedList(list); }
+            else alert('Failed: ' + r.stderr);
+          }
+          this.textContent = wantBlock ? 'Unblock' : 'Block';
+        });
+      });
+    });
+
+    if (suspicious.length) {
+      let diagHtml = '<b>⚠ Dark Web / Suspicious Connection Monitor</b><br><br>';
+      diagHtml += suspicious.map(d => `• ${esc(d)}<br>`).join('');
+      diagHtml += '<br><b>Actions:</b> Add suspicious domains to DNS filters.';
+      document.getElementById('adaptiveDiag').style.display = 'block';
+      document.getElementById('adaptiveDiag').innerHTML = diagHtml;
+    }
+  });
+}
+
+document.getElementById('btnAdaptiveScan').addEventListener('click', () => runAdaptiveAnalysis(document.getElementById('btnAdaptiveScan')));
+
+document.getElementById('btnAdaptiveSave').addEventListener('click', function(){
+  ADAPTIVE.dataThresholdMB = parseInt(document.getElementById('adaptiveDataThreshold').value) || 50;
+  ADAPTIVE.connectionThreshold = parseInt(document.getElementById('adaptiveConnThreshold').value) || 50;
+  try { lsSet('vw_adaptive_settings', JSON.stringify(ADAPTIVE)); } catch(e) {}
+  document.getElementById('btnAdaptiveReset').style.display = 'block';
+  alert('Thresholds saved.');
+});
+
+document.getElementById('btnAdaptiveReset').addEventListener('click', function(){
+  ADAPTIVE.dataThresholdMB = 50;
+  ADAPTIVE.connectionThreshold = 50;
+  document.getElementById('adaptiveDataThreshold').value = '50';
+  document.getElementById('adaptiveConnThreshold').value = '50';
+  try { lsSet('vw_adaptive_settings', JSON.stringify(ADAPTIVE)); } catch(e) {}
+  document.getElementById('btnAdaptiveReset').style.display = 'none';
+  alert('Thresholds reset to defaults.');
+});
+
+// Load saved adaptive settings
+try {
+  const saved = lsGet('vw_adaptive_settings', false);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (parsed.dataThresholdMB) ADAPTIVE.dataThresholdMB = parsed.dataThresholdMB;
+    if (parsed.connectionThreshold) ADAPTIVE.connectionThreshold = parsed.connectionThreshold;
+    document.getElementById('adaptiveDataThreshold').value = String(ADAPTIVE.dataThresholdMB);
+    document.getElementById('adaptiveConnThreshold').value = String(ADAPTIVE.connectionThreshold);
+  }
+} catch(e) {}
+
+loadAdaptiveCache();
+
 // ===================== USAGE =====================
 // `dumpsys netstats detail` prints the UID on one line and its time buckets (st= rb= tb= ...) on the
 // following lines, and its output is far larger than the bridge's per-call output limit. The
@@ -431,6 +691,42 @@ function usageSplit(x){
   return parts.join(' · ');
 }
 
+// ===================== ENHANCED DATA USAGE =====================
+const USAGE_ALERTS = {
+  dataThresholdMB: 100,
+  warnThresholdMB: 50,
+};
+
+function loadUsageAlerts(){
+  try {
+    const raw = lsGet('vw_usage_alerts', false);
+    if (raw) Object.assign(USAGE_ALERTS, JSON.parse(raw));
+  } catch(e) {}
+}
+loadUsageAlerts();
+
+function checkUsageAlerts(rows){
+  const alerts = [];
+  const warnBytes = USAGE_ALERTS.warnThresholdMB * 1024 * 1024;
+  const limitBytes = USAGE_ALERTS.dataThresholdMB * 1024 * 1024;
+  rows.forEach(r => {
+    if (r.bytes > limitBytes) alerts.push(`⚠ ${esc(r.pkg)} exceeded data limit (${fmtBytes(r.bytes)} > ${USAGE_ALERTS.dataThresholdMB}MB)`);
+    else if (r.bytes > warnBytes) alerts.push(`🔷 ${esc(r.pkg)} approaching data limit (${fmtBytes(r.bytes)} > ${USAGE_ALERTS.warnThresholdMB}MB)`);
+  });
+  return alerts;
+}
+
+document.getElementById('btnUsageAlerts').addEventListener('click', function(){
+  const warn = prompt('Warn threshold (MB):', USAGE_ALERTS.warnThresholdMB);
+  if (warn === null) return;
+  const limit = prompt('Block threshold (MB):', USAGE_ALERTS.dataThresholdMB);
+  if (limit === null) return;
+  USAGE_ALERTS.warnThresholdMB = parseInt(warn) || 50;
+  USAGE_ALERTS.dataThresholdMB = parseInt(limit) || 100;
+  try { lsSet('vw_usage_alerts', JSON.stringify(USAGE_ALERTS)); } catch(e) {}
+  alert('Thresholds updated. Re-scan usage to see updated alerts.');
+});
+
 initPicker(document.getElementById('usageRange'), [
   { value: 'boot',   label: 'Since last boot' },
   { value: 'day',    label: 'Last 24 hours' },
@@ -450,9 +746,15 @@ document.getElementById('btnScanUsage').addEventListener('click', async function
       if (r.probe || r.error) showDiag('usageDiag', 'Diagnostics (share this if usage stays empty):\n' + (r.error ? r.error + '\n' : '') + (r.probe || ''));
       return;
     }
-    box.innerHTML = r.rows.slice(0, 40).map(x =>
-      `<div class="result-row"><span>${esc(x.pkg)}<small>${usageSplit(x)}</small></span><b>${fmtBytes(x.bytes)}</b></div>`
-    ).join('');
+    box.innerHTML = r.rows.slice(0, 40).map(x => {
+      const alertClass = x.bytes > USAGE_ALERTS.dataThresholdMB * 1024 * 1024 ? 'danger' :
+                         x.bytes > USAGE_ALERTS.warnThresholdMB * 1024 * 1024 ? 'warn' : '';
+      return `<div class="result-row ${alertClass}"><span>${esc(x.pkg)}<small>${usageSplit(x)}</small></span><b>${fmtBytes(x.bytes)}</b></div>`;
+    }).join('');
+    const alerts = checkUsageAlerts(r.rows);
+    if (alerts.length) {
+      showDiag('usageDiag', 'Alerts:\n' + alerts.join('\n'));
+    }
   });
 });
 function fmtBytes(n){
@@ -973,6 +1275,122 @@ function renderRecipes(){
   });
 }
 
+// ===================== DNS FILTERS =====================
+const DNS_DEFAULTS = [
+  'doubleclick.net', 'googlesyndication.com', 'googleadservices.com',
+  'facebook.com', 'fbcdn.net', 'instagram.com', 'tiktok.com',
+  'snapchat.com', 'ads.twitter.com',
+  'analytics.google.com', 'crashlytics.com', 'mixpanel.com',
+  'adjust.com', 'appsflyer.com', 'branch.io', 'sentry.io',
+];
+
+let dnsFilters = [];
+const dnsUpstreamInput = () => document.getElementById('dnsUpstream').value.trim() || 'https://dns.cloudflare.com/dns-query';
+
+function loadDnsFilters(){
+  try { dnsFilters = JSON.parse(lsGet('vw_dns_filters', false) || '[]'); } catch(e) { dnsFilters = []; }
+  renderDnsList();
+  updateDnsProviderStatus();
+}
+function saveDnsFilters(){
+  try { lsSet('vw_dns_filters', JSON.stringify(dnsFilters)); } catch(e) {}
+}
+
+function updateDnsProviderStatus(){
+  const status = document.getElementById('dnsProviderStatus');
+  if (status) {
+    status.innerHTML = `<span>Upstream DoH:</span> <b style="color:var(--cyan);">${esc(dnsUpstreamInput())}</b> <span style="color:var(--text-dim);">| Blocked: ${dnsFilters.length} domains</span>`;
+  }
+}
+
+document.getElementById('btnDnsTest').addEventListener('click', async function(){
+  const upstream = dnsUpstreamInput();
+  try {
+    const res = await fetch(upstream + '?name=example.com&type=A', {
+      method: 'GET',
+      headers: { 'Accept': 'application/dns-json' },
+    });
+    if (res.ok) alert('✓ DNS provider reachable. Status: ' + res.status);
+    else alert('✗ DNS provider returned: ' + res.status);
+  } catch(e) {
+    alert('✗ Cannot reach DNS provider:\n' + (e.message || 'Network error'));
+  }
+});
+
+document.getElementById('btnDnsAdd').addEventListener('click', function(){
+  const d = document.getElementById('dnsNewDomain').value.trim().toLowerCase();
+  const re = /^(?!-)[a-z0-9-]{1,63}(?<!-)$/;
+  if (!d.includes('.') || d.split('.').some(p => !re.test(p))) {
+    alert('Enter a valid domain, e.g. example.com');
+    return;
+  }
+  if (dnsFilters.includes(d)) {
+    alert(d + ' is already blocked.');
+    return;
+  }
+  dnsFilters.push(d);
+  dnsFilters.sort();
+  saveDnsFilters();
+  document.getElementById('dnsNewDomain').value = '';
+  renderDnsList();
+});
+
+document.getElementById('btnDnsClear').addEventListener('click', function(){
+  if (!confirm('Clear ALL blocked domains?')) return;
+  dnsFilters = [];
+  saveDnsFilters();
+  renderDnsList();
+});
+
+document.getElementById('dnsSearch').addEventListener('input', renderDnsList);
+
+document.getElementById('btnDnsPreset').addEventListener('click', function(){
+  if (!confirm('Add known tracking/ads domains to your blocklist? Existing domains will be kept.')) return;
+  const before = dnsFilters.length;
+  for (const d of DNS_DEFAULTS) {
+    if (!dnsFilters.includes(d)) dnsFilters.push(d);
+  }
+  dnsFilters = [...new Set(dnsFilters)].sort();
+  saveDnsFilters();
+  renderDnsList();
+  alert('Added ' + (dnsFilters.length - before) + ' domains to your blocklist.');
+});
+
+function renderDnsList(){
+  const q = document.getElementById('dnsSearch').value.trim().toLowerCase();
+  const filtered = dnsFilters.filter(d => d.includes(q));
+  const box = document.getElementById('dnsList');
+  if (!filtered.length) {
+    box.textContent = dnsFilters.length ? 'No matches' : 'No blocked domains — add domains above or import common filters.';
+    return;
+  }
+  box.innerHTML = filtered.map(d => `
+    <div class="result-row" style="border-bottom:1px solid var(--border);padding:8px 0;">
+      <span style="color:var(--red);">🚫 ${esc(d)}</span>
+      <button class="btn-ghost" data-dns-remove="${esc(d)}" style="padding:2px 8px;font-size:10px;">✕</button>
+    </div>`).join('');
+  box.querySelectorAll('button[data-dns-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const d = btn.dataset.dnsRemove;
+      const idx = dnsFilters.indexOf(d);
+      if (idx >= 0) dnsFilters.splice(idx, 1);
+      saveDnsFilters();
+      renderDnsList();
+    });
+  });
+}
+
+function checkDnsBlock(host){
+  if (!host) return { blocked: false };
+  const h = host.toLowerCase().trim();
+  for (const domain of dnsFilters) {
+    if (h === domain || h.endsWith('.' + domain)) {
+      return { blocked: true, domain };
+    }
+  }
+  return { blocked: false };
+}
+
 // ===================== IMPORT / EXPORT =====================
 document.getElementById('btnExport').addEventListener('click', function(){
   const blocked = loadBlockedList();
@@ -1013,6 +1431,7 @@ document.getElementById('btnImport').addEventListener('click', async function(){
 });
 
 // ===================== INIT =====================
+loadDnsFilters();
 (function init(){
   try {
     if (checkBridge()) {

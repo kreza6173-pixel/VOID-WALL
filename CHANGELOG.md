@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4
+
+### Added
+- **Adaptive Blocking** — analyzes data usage and connections to suggest which apps should be blocked or restricted, using Chain 3 API. Categorizes apps (social, gaming, streaming, etc.) and flags high-data users.
+- **Enhanced Data Usage** — customizable alert thresholds (warn/block) with visual color-coded indicators for apps exceeding data limits. Threshold configuration dialog in Data Usage tab.
+- **DNS Filters** — block domains at the DNS level without root via DNS-over-HTTPS. Supports custom DoH providers (Cloudflare, AdGuard, Quad9, or any DoH endpoint). Includes preset blocklists for ads/tracking/analytics.
+- **Dark Web / Suspicious Connection Monitoring** — detects connections to known telemetry and tracking servers, and flags uncommon ports (4443, 4444, 1337, 31337) that may indicate malware or data exfiltration.
+- New 📈 Adaptive tab with configurable thresholds for data usage and connection counts.
+- New 🌐 DNS Filters tab with domain management and test functionality.
+
 ## 1.3
 
 ### Added
