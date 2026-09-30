@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
-<meta name="vw-build" content="1.3">
+<meta name="vw-build" content="1.4">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>VOID//WALL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -123,7 +123,8 @@ button.loading::after{content:'';width:12px;height:12px;border:2px solid rgba(0,
 .empty-note .big{font-family:var(--mono);color:var(--cyan);font-size:14px;margin-bottom:6px;display:block;}
 
 .result-row{display:flex;justify-content:space-between;padding:6px 0;font-family:var(--mono);font-size:11px;color:var(--text-dim);}
-.result-row b{color:var(--text);}
+  .result-row.warn{border-left:2px solid var(--yellow);background:rgba(232,255,60,.05);}
+  .result-row.danger{border-left:2px solid var(--red);background:rgba(255,77,109,.05);}
 .result-row small{display:block;font-size:10.5px;opacity:.75;}
 
 .log-box{margin-top:10px;background:#020207;border:1px solid var(--border);border-radius:9px;padding:11px;max-height:200px;overflow-y:auto;
@@ -235,7 +236,9 @@ details.card > .inner{margin-top:8px;}
 <div class="tabbar">
   <button class="tabbtn active" data-tab="dash">🎛️ Dashboard</button>
   <button class="tabbtn" data-tab="apps">📦 App Rules</button>
+  <button class="tabbtn" data-tab="adaptive">📈 Adaptive</button>
   <button class="tabbtn" data-tab="usage">📊 Data Usage</button>
+  <button class="tabbtn" data-tab="dns">🌐 DNS Filters</button>
   <button class="tabbtn" data-tab="root">🔓 Root Advanced</button>
   <button class="tabbtn" data-tab="recipes">📚 Recipes</button>
   <button class="tabbtn" data-tab="ai">🤖 AI Assistant</button>
@@ -288,6 +291,28 @@ details.card > .inner{margin-top:8px;}
   <div id="appListWrap"></div>
 </div>
 
+<!-- ================= ADAPTIVE ================= -->
+<div class="tabpanel" id="tab-adaptive">
+  <div class="card">
+    <div class="card-head"><span class="icon">📈</span><h3>Adaptive Blocking</h3></div>
+    <p class="desc">Analyzes data usage and connections to suggest which apps should be blocked or restricted. Uses Chain 3 for recommendations without automatic blocking.</p>
+    <div class="row">
+      <button class="btn-primary" id="btnAdaptiveScan">🔍 Analyze Apps</button>
+      <button class="btn-ghost" id="btnAdaptiveReset" style="display:none;">Reset Thresholds</button>
+    </div>
+    <div class="diag-box" id="adaptiveDiag"></div>
+    <div id="adaptiveResult"></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="icon">⚙️</span><h3>Adaptive Settings</h3></div>
+    <label class="field-label">Data usage threshold (MB)</label>
+    <input type="number" id="adaptiveDataThreshold" min="1" max="1000" value="50">
+    <label class="field-label">Connection count threshold</label>
+    <input type="number" id="adaptiveConnThreshold" min="1" max="1000" value="50">
+    <button class="btn-ghost" id="btnAdaptiveSave" style="margin-top:10px;">Save Thresholds</button>
+  </div>
+</div>
+
 <!-- ================= USAGE ================= -->
 <div class="tabpanel" id="tab-usage">
   <div class="card">
@@ -295,7 +320,10 @@ details.card > .inner{margin-top:8px;}
     <p class="desc">From <code>dumpsys netstats</code> — Android's recorded per-app traffic, split into mobile and Wi-Fi. Time buckets are coarse (1–2 h), so ranges are approximate.</p>
     <div class="hint" style="margin:0 0 10px;">With a VPN active, Android may file app traffic under the VPN tunnel (🔒), so the mobile / Wi-Fi split can be empty for those apps.</div>
     <div id="usageRange"></div>
-    <div class="row" style="margin-top:10px;"><button class="btn-primary" id="btnScanUsage">📊 Show Usage</button></div>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn-primary" id="btnScanUsage">📊 Show Usage</button>
+      <button class="btn-ghost" id="btnUsageAlerts" style="margin-left:8px;">⚙️ Alert thresholds</button>
+    </div>
     <div class="hint" id="usageNote"></div>
     <div class="diag-box" id="usageDiag"></div>
     <div id="usageResult"></div>
@@ -430,6 +458,37 @@ details.card > .inner{margin-top:8px;}
   </div>
 </div>
 
+<!-- ================= DNS FILTERS ================= -->
+<div class="tabpanel" id="tab-dns">
+  <div class="card">
+    <div class="card-head"><span class="icon">🌐</span><h3>DNS Filters</h3></div>
+    <p class="desc">Block domains at the DNS level. Works without root via DNS-over-HTTPS through your configured provider.</p>
+    <div id="dnsProviderStatus" class="summary-bar" style="margin-bottom:10px;">Checking provider…</div>
+    <label class="field-label">DNS Provider</label>
+    <div class="row">
+      <input type="text" id="dnsUpstream" placeholder="https://dns.cloudflare.com/dns-query" style="flex:1;" value="https://dns.cloudflare.com/dns-query">
+      <button class="btn-ghost" id="btnDnsTest" style="flex:none;">Test</button>
+    </div>
+    <div class="hint">Common DoH endpoints: Cloudflare (1.1.1.1), AdGuard (dns.adguard.com), Quad9 (9.9.9.9)</div>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn-primary" id="btnDnsAdd">➕ Add blocked domain</button>
+      <button class="btn-ghost" id="btnDnsClear">🧹 Clear all filters</button>
+    </div>
+    <div class="hint">Enter a domain below to add it to the blocklist.</div>
+    <input type="text" id="dnsNewDomain" placeholder="example.com" style="margin-top:8px;">
+    <div class="row" style="margin-top:10px;">
+      <button class="btn-ghost" id="btnDnsPreset">📥 Load known filters</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="icon">🚫</span><h3>Blocked Domains</h3></div>
+    <div class="row" style="margin-bottom:8px;">
+      <input type="text" id="dnsSearch" placeholder="Filter domains…" style="width:100%;">
+    </div>
+    <div class="log-box" id="dnsList" style="max-height:300px;">Loading…</div>
+  </div>
+</div>
+
 <!-- ================= IMPORT/EXPORT ================= -->
 <div class="tabpanel" id="tab-io">
   <div class="card">
@@ -465,7 +524,7 @@ details.card > .inner{margin-top:8px;}
   document.addEventListener('click', function (e) { if (e.target && e.target.id === 'jsErrorBar') e.target.style.display = 'none'; });
 })();
 </script>
-<script src="wall.js?v=1.3"></script>
+<script src="wall.js?v=1.4"></script>
 <script src="ai.js?v=1.3"></script>
 </body>
 </html>
