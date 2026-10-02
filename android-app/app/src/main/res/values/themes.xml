@@ -1,0 +1,1 @@
+<resources><style name="Theme.VoidWall" parent="android:style/Theme.Material.NoActionBar"><item name="android:fontFamily">monospace</item><item name="android:statusBarColor">@color/wall_status</item><item name="android:navigationBarColor">@color/wall_status</item><item name="android:windowLightStatusBar">false</item></style></resources>
